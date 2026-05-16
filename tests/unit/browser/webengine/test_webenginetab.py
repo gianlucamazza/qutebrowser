@@ -232,6 +232,275 @@ class TestFindFlags:
         assert str(flags) == expected
 
 
+class TestWebEngineWebAuth:
+
+    """Tests for the _WebEngineWebAuth handler."""
+
+    @pytest.fixture(autouse=True)
+    def skip_if_no_webauth(self):
+        if webenginetab.QWebEngineWebAuthUxRequest is None:
+            pytest.skip("QWebEngineWebAuthUxRequest not available")
+
+    @pytest.fixture
+    def webauth(self):
+        class FakeTab:
+
+            abort_questions = None
+
+        return webenginetab._WebEngineWebAuth(tab=FakeTab())
+
+    def test_failure_reason_texts_exhaustive(self, webauth):
+        """Ensure all RequestFailureReason values are covered."""
+        reasons = webenginetab.QWebEngineWebAuthUxRequest.RequestFailureReason
+
+        for reason in reasons:
+            text = webauth._get_failure_reason_text(reason)
+
+            assert isinstance(text, str)
+            assert text
+
+    def test_pin_context_text(self, webauth):
+        """Ensure PIN prompts explain the FIDO2/security-key context."""
+
+        class FakePinRequest:
+
+            reason = (
+                webenginetab.QWebEngineWebAuthUxRequest.PinEntryReason.Challenge
+            )
+            error = (
+                webenginetab.QWebEngineWebAuthUxRequest.PinEntryError.WrongPin
+            )
+            minPinLength = 4
+            remainingAttempts = 2
+
+        text = webauth._get_pin_context_text(FakePinRequest())
+
+        assert "FIDO2 PIN" in text
+        assert "not your website password" in text
+        assert "previous PIN was incorrect" in text
+        assert "Minimum length: 4" in text
+        assert "Remaining PIN attempts: 2" in text
+
+    def test_pin_context_text_last_attempt(self, webauth):
+        """Ensure the last PIN attempt gets stronger wording."""
+
+        class FakePinRequest:
+
+            reason = (
+                webenginetab.QWebEngineWebAuthUxRequest.PinEntryReason.Change
+            )
+            error = (
+                webenginetab.QWebEngineWebAuthUxRequest.PinEntryError.NoError
+            )
+            minPinLength = 0
+            remainingAttempts = 1
+
+        text = webauth._get_pin_context_text(FakePinRequest())
+
+        assert "Change the FIDO2 PIN" in text
+        assert "Last PIN attempt before lockout" in text
+
+    def test_cleanup_request_disconnects_state_signal(self, webauth):
+        """Ensure request cleanup removes the state change handler."""
+        disconnected = []
+
+        class FakeSignal:
+
+            def disconnect(self, slot):
+                disconnected.append(slot)
+
+        class FakeRequest:
+
+            stateChanged = FakeSignal()
+
+        webauth._request = FakeRequest()
+
+        webauth._cleanup_request()
+
+        assert disconnected == [webauth._on_ux_state_changed]
+        assert webauth._request is None
+
+    def test_cleanup_request_ignores_already_disconnected_signal(self, webauth):
+        """Qt raises TypeError when disconnecting an already disconnected slot."""
+
+        class FakeSignal:
+
+            def disconnect(self, _slot):
+                raise TypeError
+
+        class FakeRequest:
+
+            stateChanged = FakeSignal()
+
+        webauth._request = FakeRequest()
+
+        webauth._cleanup_request()
+
+        assert webauth._request is None
+
+    def test_pin_prompt_ignores_stale_request(self, webauth, monkeypatch):
+        """A cancelled request while the PIN prompt is open must not be reused."""
+
+        class FakeRequest:
+
+            def __init__(self):
+                self.pin = None
+                self.cancelled = False
+
+            def relyingPartyId(self):
+                return "example.org"
+
+            def pinRequest(self):
+                class FakePinRequest:
+
+                    reason = (
+                        webenginetab.QWebEngineWebAuthUxRequest
+                        .PinEntryReason.Challenge
+                    )
+                    error = (
+                        webenginetab.QWebEngineWebAuthUxRequest
+                        .PinEntryError.NoError
+                    )
+                    minPinLength = 0
+                    remainingAttempts = 0
+
+                return FakePinRequest()
+
+            def setPin(self, pin):
+                self.pin = pin
+
+            def cancel(self):
+                self.cancelled = True
+
+        request = FakeRequest()
+        webauth._request = request
+
+        def answer_prompt(_url, _text):
+            webauth._request = None
+            return "123456"
+
+        monkeypatch.setattr(webauth, "_verification_required", answer_prompt)
+
+        webauth._ux_pin_request()
+
+        assert request.pin is None
+        assert not request.cancelled
+
+    def test_verification_required_uses_webauthn_copy(self, webauth, monkeypatch):
+        """Ensure the PIN prompt uses WebAuthn-specific wording."""
+        calls = []
+
+        def fake_ask(**kwargs):
+            calls.append(kwargs)
+            return "123456"
+
+        monkeypatch.setattr(webenginetab.message, "ask", fake_ask)
+
+        assert (
+            webauth._verification_required("example.org", "PIN text") ==
+            "123456"
+        )
+
+        assert calls == [{
+            "title": "WebAuthn verification for example.org",
+            "text": "PIN text",
+            "mode": usertypes.PromptMode.pwd,
+            "abort_on": [
+                webauth._tab.abort_questions,
+                webauth.request_cancelled,
+            ],
+        }]
+
+    def test_account_selection_ignores_stale_request(self, webauth, monkeypatch):
+        """A cancelled request while the select prompt is open must not be reused."""
+
+        class FakeRequest:
+
+            def __init__(self):
+                self.account = None
+                self.cancelled = False
+
+            def relyingPartyId(self):
+                return "example.org"
+
+            def userNames(self):
+                return ["one", "two"]
+
+            def setSelectedAccount(self, account):
+                self.account = account
+
+            def cancel(self):
+                self.cancelled = True
+
+        request = FakeRequest()
+        webauth._request = request
+
+        def select_account(_url, _usernames):
+            webauth._request = None
+            return "one"
+
+        monkeypatch.setattr(webauth, "_select_account", select_account)
+
+        webauth._ux_account_selection()
+
+        assert request.account is None
+        assert not request.cancelled
+
+    def test_select_account_escapes_usernames(self, webauth, monkeypatch):
+        """Ensure account names are HTML-escaped in prompt text."""
+        calls = []
+
+        def fake_ask(**kwargs):
+            calls.append(kwargs)
+            return "alice<script>"
+
+        monkeypatch.setattr(webenginetab.message, "ask", fake_ask)
+
+        answer = webauth._select_account(
+            "example.org",
+            ["alice<script>", "bob&co"],
+        )
+
+        assert answer == "alice<script>"
+        assert calls[0]["title"] == "WebAuthn account selection for example.org"
+        assert "alice&lt;script&gt;" in calls[0]["text"]
+        assert "bob&amp;co" in calls[0]["text"]
+        assert "<script>" not in calls[0]["text"]
+
+    def test_request_failed_uses_error_message(self, webauth, monkeypatch):
+        """Ensure WebAuthn failures are surfaced as errors."""
+        errors = []
+
+        class FakeRequest:
+
+            def relyingPartyId(self):
+                return "example.org"
+
+            def requestFailureReason(self):
+                return (
+                    webenginetab.QWebEngineWebAuthUxRequest
+                    .RequestFailureReason.Timeout
+                )
+
+            class stateChanged:
+
+                @staticmethod
+                def disconnect(_slot):
+                    pass
+
+        monkeypatch.setattr(
+            webenginetab.message,
+            "error",
+            lambda text: errors.append(text),
+        )
+        webauth._request = FakeRequest()
+
+        webauth._ux_request_failed()
+
+        assert errors == ["WebAuthn verification failed: The request timed out."]
+        assert webauth._request is None
+
+
 class TestWebEnginePermissions:
 
     def test_clipboard_value(self):

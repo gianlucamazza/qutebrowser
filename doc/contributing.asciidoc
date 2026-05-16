@@ -655,6 +655,27 @@ The hierarchy of widgets when QtWebEngine is involved looks like this:
       It can be obtained via `tab._widget.focusProxy()`.
 - Calling `rootObject()` on that gives us the https://doc.qt.io/qt-6/qquickitem.html[QQuickItem] where Chromium renders into (?). With it, we can do things like `.setRotation(20)`.
 
+WebAuthn/FIDO2 UX requests
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+With Qt 6.7 or newer, QtWebEngine exposes WebAuthn user verification requests
+via https://doc.qt.io/qt-6/qwebenginepage.html#webAuthUxRequested[`QWebEnginePage.webAuthUxRequested`]
+and https://doc.qt.io/qt-6/qwebenginewebauthuxrequest.html[`QWebEngineWebAuthUxRequest`].
+qutebrowser handles those requests in QtWebEngine-specific code, as this API
+does not exist for QtWebKit.
+
+Keep this layer limited to browser/WebAuthn UX state handling: PIN collection,
+resident credential account selection, token touch prompts, cancellation,
+completion and request failure reporting. A request can be cancelled while a
+qutebrowser prompt is still open, so code must not keep using a stale
+`QWebEngineWebAuthUxRequest` after returning from a prompt.
+
+Password-manager passkey integrations are separate from this browser UX layer.
+For example, 1Password passkeys are exposed through supported browser
+extensions; qutebrowser should not add a custom 1Password CLI/API bridge for
+WebAuthn signing unless 1Password provides a stable public authenticator
+interface for that purpose.
+
 Style conventions
 -----------------
 
