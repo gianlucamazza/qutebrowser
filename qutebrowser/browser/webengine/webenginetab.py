@@ -12,20 +12,49 @@ import re
 import html as html_utils
 from typing import cast, Union, Optional, Any
 
-from qutebrowser.qt.core import (pyqtSignal, pyqtSlot, Qt, QPoint, QPointF, QUrl,
-                          QObject, QByteArray, QTimer)
+from qutebrowser.qt.core import (
+    pyqtSignal,
+    pyqtSlot,
+    Qt,
+    QPoint,
+    QPointF,
+    QUrl,
+    QObject,
+    QByteArray,
+    QTimer,
+)
 from qutebrowser.qt.widgets import QWidget
 from qutebrowser.qt.network import QAuthenticator
-from qutebrowser.qt.webenginecore import QWebEnginePage, QWebEngineScript, QWebEngineHistory
+from qutebrowser.qt.webenginecore import (
+    QWebEnginePage,
+    QWebEngineScript,
+    QWebEngineHistory,
+)
 
 from qutebrowser.config import config
 from qutebrowser.browser import browsertab, eventfilter, shared, webelem, greasemonkey
-from qutebrowser.browser.webengine import (webview, webengineelem, tabhistory,
-                                           webenginesettings, certificateerror,
-                                           webengineinspector)
+from qutebrowser.browser.webengine import (
+    webview,
+    webengineelem,
+    tabhistory,
+    webenginesettings,
+    certificateerror,
+    webengineinspector,
+)
 
-from qutebrowser.utils import (usertypes, qtutils, log, javascript, utils,
-                               resources, message, jinja, debug, version, urlutils)
+from qutebrowser.utils import (
+    usertypes,
+    qtutils,
+    log,
+    javascript,
+    utils,
+    resources,
+    message,
+    jinja,
+    debug,
+    version,
+    urlutils,
+)
 from qutebrowser.qt import sip, machinery
 from qutebrowser.misc import objects, miscwidgets
 
@@ -49,7 +78,6 @@ _JS_WORLD_MAP = {
 
 
 class WebEngineAction(browsertab.AbstractAction):
-
     """QtWebEngine implementations related to web actions."""
 
     _widget: webview.WebEngineView
@@ -71,7 +99,6 @@ class WebEngineAction(browsertab.AbstractAction):
 
 
 class WebEnginePrinting(browsertab.AbstractPrinting):
-
     """QtWebEngine implementations related to printing."""
 
     _widget: webview.WebEngineView
@@ -88,8 +115,7 @@ class WebEnginePrinting(browsertab.AbstractPrinting):
         pass
 
     def check_preview_support(self):
-        raise browsertab.WebTabError(
-            "Print previews are unsupported with QtWebEngine")
+        raise browsertab.WebTabError("Print previews are unsupported with QtWebEngine")
 
     def to_pdf(self, path):
         self._widget.page().printToPdf(str(path))
@@ -109,7 +135,6 @@ else:
 
 @dataclasses.dataclass
 class _FindFlags:
-
     case_sensitive: bool = False
     backward: bool = False
 
@@ -143,7 +168,6 @@ class _FindFlags:
 
 
 class WebEngineSearch(browsertab.AbstractSearch):
-
     """QtWebEngine implementations related to searching on the page.
 
     Attributes:
@@ -180,16 +204,16 @@ class WebEngineSearch(browsertab.AbstractSearch):
             if self._pending_searches > 0:
                 # See https://github.com/qutebrowser/qutebrowser/issues/2442
                 # and https://github.com/qt/qtwebengine/blob/5.10/src/core/web_contents_adapter.cpp#L924-L934
-                log.webview.debug("Ignoring cancelled search callback with "
-                                  "{} pending searches".format(
-                                      self._pending_searches))
+                log.webview.debug(
+                    "Ignoring cancelled search callback with "
+                    "{} pending searches".format(self._pending_searches)
+                )
                 return
 
             if sip.isdeleted(self._widget):
                 # This happens when starting a search, and closing the tab
                 # before results arrive.
-                log.webview.debug("Ignoring finished search for deleted "
-                                  "widget")
+                log.webview.debug("Ignoring finished search for deleted widget")
                 return
 
             # bool in Qt 5, QWebEngineFindTextResult in Qt 6
@@ -197,13 +221,12 @@ class WebEngineSearch(browsertab.AbstractSearch):
             # QWebEngineFindTextResult instead of the bool.
             found = cb_arg if isinstance(cb_arg, bool) else cb_arg.numberOfMatches() > 0
 
-            found_text = 'found' if found else "didn't find"
+            found_text = "found" if found else "didn't find"
             if flags:
-                flag_text = f'with flags {flags}'
+                flag_text = f"with flags {flags}"
             else:
-                flag_text = ''
-            log.webview.debug(' '.join([caller, found_text, text, flag_text])
-                              .strip())
+                flag_text = ""
+            log.webview.debug(" ".join([caller, found_text, text, flag_text]).strip())
 
             if callback is not None:
                 callback(found)
@@ -222,12 +245,21 @@ class WebEngineSearch(browsertab.AbstractSearch):
         log.webview.debug(f"Active search match: {self.match}")
         self.match_changed.emit(self.match)
 
-    def search(self, text, *, ignore_case=usertypes.IgnoreCase.never,
-               reverse=False, result_cb=None):
+    def search(
+        self,
+        text,
+        *,
+        ignore_case=usertypes.IgnoreCase.never,
+        reverse=False,
+        result_cb=None,
+    ):
         # Don't go to next entry on duplicate search
         if self.text == text and self.search_displayed:
-            log.webview.debug("Ignoring duplicate search request"
-                              " for {}, but resetting flags".format(text))
+            log.webview.debug(
+                "Ignoring duplicate search request for {}, but resetting flags".format(
+                    text
+                )
+            )
             self._store_flags(reverse, ignore_case)
             return
 
@@ -235,7 +267,7 @@ class WebEngineSearch(browsertab.AbstractSearch):
         self._store_flags(reverse, ignore_case)
         self.match.reset()
 
-        self._find(text, self._flags, result_cb, 'search')
+        self._find(text, self._flags, result_cb, "search")
 
     def clear(self):
         if self.search_displayed:
@@ -243,7 +275,7 @@ class WebEngineSearch(browsertab.AbstractSearch):
             self.match_changed.emit(browsertab.SearchMatch())
         self.search_displayed = False
         self.match.reset()
-        self._widget.page().findText('')
+        self._widget.page().findText("")
 
     def _prev_next_cb(self, found, *, going_up, callback):
         """Call the prev/next callback based on the search result."""
@@ -266,44 +298,45 @@ class WebEngineSearch(browsertab.AbstractSearch):
 
         if self.match.at_limit(going_up=going_up) and not wrap:
             res = (
-                browsertab.SearchNavigationResult.wrap_prevented_top if going_up else
-                browsertab.SearchNavigationResult.wrap_prevented_bottom
+                browsertab.SearchNavigationResult.wrap_prevented_top
+                if going_up
+                else browsertab.SearchNavigationResult.wrap_prevented_bottom
             )
             if callback is not None:
                 callback(res)
             return
 
         cb = functools.partial(self._prev_next_cb, going_up=going_up, callback=callback)
-        self._find(self.text, flags, cb, 'prev_result')
+        self._find(self.text, flags, cb, "prev_result")
 
     def next_result(self, *, wrap=False, callback=None):
         going_up = self._flags.backward
         if self.match.at_limit(going_up=going_up) and not wrap:
             res = (
-                browsertab.SearchNavigationResult.wrap_prevented_top if going_up else
-                browsertab.SearchNavigationResult.wrap_prevented_bottom
+                browsertab.SearchNavigationResult.wrap_prevented_top
+                if going_up
+                else browsertab.SearchNavigationResult.wrap_prevented_bottom
             )
             if callback is not None:
                 callback(res)
             return
 
         cb = functools.partial(self._prev_next_cb, going_up=going_up, callback=callback)
-        self._find(self.text, self._flags, cb, 'next_result')
+        self._find(self.text, self._flags, cb, "next_result")
 
 
 class WebEngineCaret(browsertab.AbstractCaret):
-
     """QtWebEngine implementations related to moving the cursor/selection."""
 
-    _tab: 'WebEngineTab'
+    _tab: "WebEngineTab"
 
     def _flags(self):
         """Get flags to pass to JS."""
         flags = set()
         if utils.is_windows:
-            flags.add('windows')
-        if 'caret' in objects.debug_flags:
-            flags.add('debug')
+            flags.add("windows")
+        if "caret" in objects.debug_flags:
+            flags.add("debug")
         return list(flags)
 
     @pyqtSlot(usertypes.KeyMode)
@@ -316,10 +349,9 @@ class WebEngineCaret(browsertab.AbstractCaret):
             # convert the search to a blue selection so we can operate on it
             self._tab.search.clear()
 
-        self._tab.run_js_async(
-            javascript.assemble('caret', 'setFlags', self._flags()))
+        self._tab.run_js_async(javascript.assemble("caret", "setFlags", self._flags()))
 
-        self._js_call('setInitialCursor', callback=self._selection_cb)
+        self._js_call("setInitialCursor", callback=self._selection_cb)
 
     def _selection_cb(self, enabled):
         """Emit selection_toggled based on setInitialCursor."""
@@ -340,59 +372,58 @@ class WebEngineCaret(browsertab.AbstractCaret):
             return
 
         self.drop_selection()
-        self._js_call('disableCaret')
+        self._js_call("disableCaret")
 
     def move_to_next_line(self, count=1):
-        self._js_call('moveDown', count)
+        self._js_call("moveDown", count)
 
     def move_to_prev_line(self, count=1):
-        self._js_call('moveUp', count)
+        self._js_call("moveUp", count)
 
     def move_to_next_char(self, count=1):
-        self._js_call('moveRight', count)
+        self._js_call("moveRight", count)
 
     def move_to_prev_char(self, count=1):
-        self._js_call('moveLeft', count)
+        self._js_call("moveLeft", count)
 
     def move_to_end_of_word(self, count=1):
-        self._js_call('moveToEndOfWord', count)
+        self._js_call("moveToEndOfWord", count)
 
     def move_to_next_word(self, count=1):
-        self._js_call('moveToNextWord', count)
+        self._js_call("moveToNextWord", count)
 
     def move_to_prev_word(self, count=1):
-        self._js_call('moveToPreviousWord', count)
+        self._js_call("moveToPreviousWord", count)
 
     def move_to_start_of_line(self):
-        self._js_call('moveToStartOfLine')
+        self._js_call("moveToStartOfLine")
 
     def move_to_end_of_line(self):
-        self._js_call('moveToEndOfLine')
+        self._js_call("moveToEndOfLine")
 
     def move_to_start_of_next_block(self, count=1):
-        self._js_call('moveToStartOfNextBlock', count)
+        self._js_call("moveToStartOfNextBlock", count)
 
     def move_to_start_of_prev_block(self, count=1):
-        self._js_call('moveToStartOfPrevBlock', count)
+        self._js_call("moveToStartOfPrevBlock", count)
 
     def move_to_end_of_next_block(self, count=1):
-        self._js_call('moveToEndOfNextBlock', count)
+        self._js_call("moveToEndOfNextBlock", count)
 
     def move_to_end_of_prev_block(self, count=1):
-        self._js_call('moveToEndOfPrevBlock', count)
+        self._js_call("moveToEndOfPrevBlock", count)
 
     def move_to_start_of_document(self):
-        self._js_call('moveToStartOfDocument')
+        self._js_call("moveToStartOfDocument")
 
     def move_to_end_of_document(self):
-        self._js_call('moveToEndOfDocument')
+        self._js_call("moveToEndOfDocument")
 
     def toggle_selection(self, line=False):
-        self._js_call('toggleSelection', line,
-                      callback=self._toggle_sel_translate)
+        self._js_call("toggleSelection", line, callback=self._toggle_sel_translate)
 
     def drop_selection(self):
-        self._js_call('dropSelection')
+        self._js_call("dropSelection")
 
     def selection(self, callback):
         # Not using selectedText() as WORKAROUND for
@@ -401,11 +432,10 @@ class WebEngineCaret(browsertab.AbstractCaret):
         # https://github.com/qutebrowser/qutebrowser/issues/3523
         # With Qt 6.2-6.5, there still seem to be issues (especially with
         # multi-line text)
-        self._tab.run_js_async(javascript.assemble('caret', 'getSelection'),
-                               callback)
+        self._tab.run_js_async(javascript.assemble("caret", "getSelection"), callback)
 
     def reverse_selection(self):
-        self._js_call('reverseSelection')
+        self._js_call("reverseSelection")
 
     def _follow_selected_cb_wrapped(self, js_elem, tab):
         if sip.isdeleted(self):
@@ -415,7 +445,8 @@ class WebEngineCaret(browsertab.AbstractCaret):
             log.webview.warning(
                 "Got follow_selected callback for deleted WebEngineCaret. "
                 "This is most likely due to a QtWebEngine bug, please report a "
-                "qutebrowser issue if you know a way to reproduce this.")
+                "qutebrowser issue if you know a way to reproduce this."
+            )
             return
 
         try:
@@ -447,8 +478,11 @@ class WebEngineCaret(browsertab.AbstractCaret):
 
         # Only click if we see a link
         if elem.is_link():
-            log.webview.debug("Found link in selection, clicking. ClickTarget "
-                              "{}, elem {}".format(click_type, elem))
+            log.webview.debug(
+                "Found link in selection, clicking. ClickTarget {}, elem {}".format(
+                    click_type, elem
+                )
+            )
             try:
                 elem.click(click_type)
             except webelem.Error as e:
@@ -465,14 +499,13 @@ class WebEngineCaret(browsertab.AbstractCaret):
             self._follow_enter(tab)
         else:
             # click an existing blue selection
-            js_code = javascript.assemble('webelem',
-                                          'find_selected_focused_link')
+            js_code = javascript.assemble("webelem", "find_selected_focused_link")
             self._tab.run_js_async(
-                js_code,
-                lambda jsret: self._follow_selected_cb_wrapped(jsret, tab))
+                js_code, lambda jsret: self._follow_selected_cb_wrapped(jsret, tab)
+            )
 
     def _js_call(self, command, *args, callback=None):
-        code = javascript.assemble('caret', command, *args)
+        code = javascript.assemble("caret", command, *args)
         self._tab.run_js_async(code, callback)
 
     def _toggle_sel_translate(self, state_str):
@@ -480,8 +513,11 @@ class WebEngineCaret(browsertab.AbstractCaret):
             # This may happen if the user switches to another mode after
             # `:selection-toggle` is executed and before this callback function
             # is asynchronously called.
-            log.misc.debug("Ignoring caret selection callback in {}".format(
-                self._mode_manager.mode))
+            log.misc.debug(
+                "Ignoring caret selection callback in {}".format(
+                    self._mode_manager.mode
+                )
+            )
             return
         if state_str is None:
             message.error("Error toggling caret selection")
@@ -491,7 +527,6 @@ class WebEngineCaret(browsertab.AbstractCaret):
 
 
 class WebEngineScroller(browsertab.AbstractScroller):
-
     """QtWebEngine implementations related to scrolling."""
 
     _widget: webview.WebEngineView
@@ -507,7 +542,9 @@ class WebEngineScroller(browsertab.AbstractScroller):
         page = widget.page()
         page.scrollPositionChanged.connect(self._update_pos)
 
-    def _repeated_key_press(self, key, count=1, modifier=Qt.KeyboardModifier.NoModifier):
+    def _repeated_key_press(
+        self, key, count=1, modifier=Qt.KeyboardModifier.NoModifier
+    ):
         """Send count fake key presses to this scroller's WebEngineTab."""
         for _ in range(min(count, 1000)):
             self._tab.fake_key_press(key, modifier)
@@ -527,10 +564,10 @@ class WebEngineScroller(browsertab.AbstractScroller):
             except ValueError:
                 # https://github.com/qutebrowser/qutebrowser/issues/3219
                 log.misc.debug("Got ValueError for perc_x!")
-                log.misc.debug("contents_size.width(): {}".format(
-                    contents_size.width()))
-                log.misc.debug("self._widget.width(): {}".format(
-                    self._widget.width()))
+                log.misc.debug(
+                    "contents_size.width(): {}".format(contents_size.width())
+                )
+                log.misc.debug("self._widget.width(): {}".format(self._widget.width()))
                 log.misc.debug("scrollable_x: {}".format(scrollable_x))
                 log.misc.debug("pos.x(): {}".format(pos.x()))
                 raise
@@ -544,18 +581,22 @@ class WebEngineScroller(browsertab.AbstractScroller):
             except ValueError:
                 # https://github.com/qutebrowser/qutebrowser/issues/3219
                 log.misc.debug("Got ValueError for perc_y!")
-                log.misc.debug("contents_size.height(): {}".format(
-                    contents_size.height()))
-                log.misc.debug("self._widget.height(): {}".format(
-                    self._widget.height()))
+                log.misc.debug(
+                    "contents_size.height(): {}".format(contents_size.height())
+                )
+                log.misc.debug(
+                    "self._widget.height(): {}".format(self._widget.height())
+                )
                 log.misc.debug("scrollable_y: {}".format(scrollable_y))
                 log.misc.debug("pos.y(): {}".format(pos.y()))
                 raise
 
         self._at_bottom = math.ceil(pos.y()) >= scrollable_y
 
-        if (self._pos_perc != (perc_x, perc_y) or
-                'no-scroll-filtering' in objects.debug_flags):
+        if (
+            self._pos_perc != (perc_x, perc_y)
+            or "no-scroll-filtering" in objects.debug_flags
+        ):
             self._pos_perc = perc_x, perc_y
             self.perc_changed.emit(*self._pos_perc)
 
@@ -566,11 +607,11 @@ class WebEngineScroller(browsertab.AbstractScroller):
         return self._pos_perc
 
     def to_perc(self, x=None, y=None):
-        js_code = javascript.assemble('scroll', 'to_perc', x, y)
+        js_code = javascript.assemble("scroll", "to_perc", x, y)
         self._tab.run_js_async(js_code)
 
     def to_point(self, point):
-        js_code = javascript.assemble('window', 'scroll', point.x(), point.y())
+        js_code = javascript.assemble("window", "scroll", point.x(), point.y())
         self._tab.run_js_async(js_code)
 
     def to_anchor(self, name):
@@ -579,10 +620,10 @@ class WebEngineScroller(browsertab.AbstractScroller):
         self._tab.load_url(url)
 
     def delta(self, x=0, y=0):
-        self._tab.run_js_async(javascript.assemble('window', 'scrollBy', x, y))
+        self._tab.run_js_async(javascript.assemble("window", "scrollBy", x, y))
 
     def delta_page(self, x=0, y=0):
-        js_code = javascript.assemble('scroll', 'delta_page', x, y)
+        js_code = javascript.assemble("scroll", "delta_page", x, y)
         self._tab.run_js_async(js_code)
 
     def up(self, count=1):
@@ -617,10 +658,9 @@ class WebEngineScroller(browsertab.AbstractScroller):
 
 
 class WebEngineHistoryPrivate(browsertab.AbstractHistoryPrivate):
-
     """History-related methods which are not part of the extension API."""
 
-    def __init__(self, tab: 'WebEngineTab') -> None:
+    def __init__(self, tab: "WebEngineTab") -> None:
         self._tab = tab
         self._history = cast(QWebEngineHistory, None)
 
@@ -660,7 +700,7 @@ class WebEngineHistoryPrivate(browsertab.AbstractHistoryPrivate):
                 break
 
         url = items[cur_idx].url
-        if (url.scheme(), url.host()) == ('qute', 'back') and cur_idx >= 1:
+        if (url.scheme(), url.host()) == ("qute", "back") and cur_idx >= 1:
             url = items[cur_idx - 1].url
 
         self._tab.load_url(url)
@@ -681,19 +721,17 @@ class WebEngineHistoryPrivate(browsertab.AbstractHistoryPrivate):
 
         @pyqtSlot()
         def _on_load_finished():
-            self._tab.scroller.to_point(cur_data['scroll-pos'])
+            self._tab.scroller.to_point(cur_data["scroll-pos"])
             self._tab.load_finished.disconnect(_on_load_finished)
 
         if cur_data is not None:
-            if 'zoom' in cur_data:
-                self._tab.zoom.set_factor(cur_data['zoom'])
-            if ('scroll-pos' in cur_data and
-                    self._tab.scroller.pos_px() == QPoint(0, 0)):
+            if "zoom" in cur_data:
+                self._tab.zoom.set_factor(cur_data["zoom"])
+            if "scroll-pos" in cur_data and self._tab.scroller.pos_px() == QPoint(0, 0):
                 self._tab.load_finished.connect(_on_load_finished)
 
 
 class WebEngineHistory(browsertab.AbstractHistory):
-
     """QtWebEngine implementations related to page history."""
 
     def __init__(self, tab):
@@ -733,7 +771,6 @@ class WebEngineHistory(browsertab.AbstractHistory):
 
 
 class WebEngineZoom(browsertab.AbstractZoom):
-
     """QtWebEngine implementations related to zooming."""
 
     _widget: webview.WebEngineView
@@ -743,10 +780,9 @@ class WebEngineZoom(browsertab.AbstractZoom):
 
 
 class WebEngineElements(browsertab.AbstractElements):
-
     """QtWebEngine implementations related to elements on the page."""
 
-    _tab: 'WebEngineTab'
+    _tab: "WebEngineTab"
 
     def _js_cb_multiple(self, callback, error_cb, js_elems):
         """Handle found elements coming from JS and call the real callback.
@@ -757,15 +793,14 @@ class WebEngineElements(browsertab.AbstractElements):
             js_elems: The elements serialized from javascript.
         """
         if js_elems is None:
-            error_cb(webelem.Error("Unknown error while getting "
-                                   "elements"))
+            error_cb(webelem.Error("Unknown error while getting elements"))
             return
-        elif not js_elems['success']:
-            error_cb(webelem.Error(js_elems['error']))
+        elif not js_elems["success"]:
+            error_cb(webelem.Error(js_elems["error"]))
             return
 
         elems = []
-        for js_elem in js_elems['result']:
+        for js_elem in js_elems["result"]:
             elem = webengineelem.WebEngineElement(js_elem, tab=self._tab)
             elems.append(elem)
         callback(elems)
@@ -778,8 +813,7 @@ class WebEngineElements(browsertab.AbstractElements):
                       Called with a WebEngineElement or None.
             js_elem: The element serialized from javascript.
         """
-        debug_str = ('None' if js_elem is None
-                     else utils.elide(repr(js_elem), 1000))
+        debug_str = "None" if js_elem is None else utils.elide(repr(js_elem), 1000)
         log.webview.debug("Got element from JS: {}".format(debug_str))
 
         if js_elem is None:
@@ -788,20 +822,18 @@ class WebEngineElements(browsertab.AbstractElements):
             elem = webengineelem.WebEngineElement(js_elem, tab=self._tab)
             callback(elem)
 
-    def find_css(self, selector, callback, error_cb, *,
-                 only_visible=False):
-        js_code = javascript.assemble('webelem', 'find_css', selector,
-                                      only_visible)
+    def find_css(self, selector, callback, error_cb, *, only_visible=False):
+        js_code = javascript.assemble("webelem", "find_css", selector, only_visible)
         js_cb = functools.partial(self._js_cb_multiple, callback, error_cb)
         self._tab.run_js_async(js_code, js_cb)
 
     def find_id(self, elem_id, callback):
-        js_code = javascript.assemble('webelem', 'find_id', elem_id)
+        js_code = javascript.assemble("webelem", "find_id", elem_id)
         js_cb = functools.partial(self._js_cb_single, callback)
         self._tab.run_js_async(js_code, js_cb)
 
     def find_focused(self, callback):
-        js_code = javascript.assemble('webelem', 'find_focused')
+        js_code = javascript.assemble("webelem", "find_focused")
         js_cb = functools.partial(self._js_cb_single, callback)
         self._tab.run_js_async(js_code, js_cb)
 
@@ -809,14 +841,12 @@ class WebEngineElements(browsertab.AbstractElements):
         assert pos.x() >= 0, pos
         assert pos.y() >= 0, pos
         pos /= self._tab.zoom.factor()
-        js_code = javascript.assemble('webelem', 'find_at_pos',
-                                      pos.x(), pos.y())
+        js_code = javascript.assemble("webelem", "find_at_pos", pos.x(), pos.y())
         js_cb = functools.partial(self._js_cb_single, callback)
         self._tab.run_js_async(js_code, js_cb)
 
 
 class WebEngineAudio(browsertab.AbstractAudio):
-
     """QtWebEngine implementations related to audio/muting.
 
     Attributes:
@@ -843,8 +873,9 @@ class WebEngineAudio(browsertab.AbstractAudio):
         page.recentlyAudibleChanged.connect(self._delayed_recently_audible_changed)
         self._tab.url_changed.connect(self._on_url_changed)
         config.instance.changed.connect(self._on_config_changed)
-        self._silence_timer.timeout.connect(functools.partial(
-            self.recently_audible_changed.emit, False))
+        self._silence_timer.timeout.connect(
+            functools.partial(self.recently_audible_changed.emit, False)
+        )
 
     # WORKAROUND for recentlyAudibleChanged being emitted without delay from the moment
     # that audio is dropped.
@@ -880,43 +911,42 @@ class WebEngineAudio(browsertab.AbstractAudio):
     def _on_url_changed(self, url):
         if self._overridden or not url.isValid():
             return
-        mute = config.instance.get('content.mute', url=url)
+        mute = config.instance.get("content.mute", url=url)
         self.set_muted(mute)
 
-    @config.change_filter('content.mute')
+    @config.change_filter("content.mute")
     def _on_config_changed(self):
         self._on_url_changed(self._tab.url())
 
 
 class _WebEnginePermissions(QObject):
-
     """Handling of various permission-related signals."""
 
     _widget: webview.WebEngineView
 
     _options = {
-        QWebEnginePage.Feature.Notifications: 'content.notifications.enabled',
-        QWebEnginePage.Feature.Geolocation: 'content.geolocation',
-        QWebEnginePage.Feature.MediaAudioCapture: 'content.media.audio_capture',
-        QWebEnginePage.Feature.MediaVideoCapture: 'content.media.video_capture',
-        QWebEnginePage.Feature.MediaAudioVideoCapture: 'content.media.audio_video_capture',
-        QWebEnginePage.Feature.MouseLock: 'content.mouse_lock',
-        QWebEnginePage.Feature.DesktopVideoCapture: 'content.desktop_capture',
-        QWebEnginePage.Feature.DesktopAudioVideoCapture: 'content.desktop_capture',
+        QWebEnginePage.Feature.Notifications: "content.notifications.enabled",
+        QWebEnginePage.Feature.Geolocation: "content.geolocation",
+        QWebEnginePage.Feature.MediaAudioCapture: "content.media.audio_capture",
+        QWebEnginePage.Feature.MediaVideoCapture: "content.media.video_capture",
+        QWebEnginePage.Feature.MediaAudioVideoCapture: "content.media.audio_video_capture",
+        QWebEnginePage.Feature.MouseLock: "content.mouse_lock",
+        QWebEnginePage.Feature.DesktopVideoCapture: "content.desktop_capture",
+        QWebEnginePage.Feature.DesktopAudioVideoCapture: "content.desktop_capture",
         # 8 == ClipboardReadWrite, new in 6.8
-        QWebEnginePage.Feature(8): 'content.javascript.clipboard',
+        QWebEnginePage.Feature(8): "content.javascript.clipboard",
     }
 
     _messages = {
-        QWebEnginePage.Feature.Notifications: 'show notifications',
-        QWebEnginePage.Feature.Geolocation: 'access your location',
-        QWebEnginePage.Feature.MediaAudioCapture: 'record audio',
-        QWebEnginePage.Feature.MediaVideoCapture: 'record video',
-        QWebEnginePage.Feature.MediaAudioVideoCapture: 'record audio/video',
-        QWebEnginePage.Feature.MouseLock: 'hide your mouse pointer',
-        QWebEnginePage.Feature.DesktopVideoCapture: 'capture your desktop',
-        QWebEnginePage.Feature.DesktopAudioVideoCapture: 'capture your desktop and audio',
-        QWebEnginePage.Feature(8): 'read and write your clipboard',
+        QWebEnginePage.Feature.Notifications: "show notifications",
+        QWebEnginePage.Feature.Geolocation: "access your location",
+        QWebEnginePage.Feature.MediaAudioCapture: "record audio",
+        QWebEnginePage.Feature.MediaVideoCapture: "record video",
+        QWebEnginePage.Feature.MediaAudioVideoCapture: "record audio/video",
+        QWebEnginePage.Feature.MouseLock: "hide your mouse pointer",
+        QWebEnginePage.Feature.DesktopVideoCapture: "capture your desktop",
+        QWebEnginePage.Feature.DesktopAudioVideoCapture: "capture your desktop and audio",
+        QWebEnginePage.Feature(8): "read and write your clipboard",
     }
 
     def __init__(self, tab, parent=None):
@@ -928,16 +958,15 @@ class _WebEnginePermissions(QObject):
     def connect_signals(self):
         """Connect related signals from the QWebEnginePage."""
         page = self._widget.page()
-        page.fullScreenRequested.connect(
-            self._on_fullscreen_requested)
-        page.featurePermissionRequested.connect(
-            self._on_feature_permission_requested)
+        page.fullScreenRequested.connect(self._on_fullscreen_requested)
+        page.featurePermissionRequested.connect(self._on_feature_permission_requested)
 
         page.quotaRequested.connect(self._on_quota_requested)
         page.registerProtocolHandlerRequested.connect(
-            self._on_register_protocol_handler_requested)
+            self._on_register_protocol_handler_requested
+        )
 
-    @pyqtSlot('QWebEngineFullScreenRequest')
+    @pyqtSlot("QWebEngineFullScreenRequest")
     def _on_fullscreen_requested(self, request):
         request.accept()
         on = request.toggleOn()
@@ -955,44 +984,58 @@ class _WebEnginePermissions(QObject):
                 if self._widget.isVisible():
                     self._widget.setFocus()
 
-    @pyqtSlot(QUrl, 'QWebEnginePage::Feature')
+    @pyqtSlot(QUrl, "QWebEnginePage::Feature")
     def _on_feature_permission_requested(self, url, feature):
         """Ask the user for approval for geolocation/media/etc.."""
         page = self._widget.page()
         grant_permission = functools.partial(
-            page.setFeaturePermission, url, feature,
-            QWebEnginePage.PermissionPolicy.PermissionGrantedByUser)
+            page.setFeaturePermission,
+            url,
+            feature,
+            QWebEnginePage.PermissionPolicy.PermissionGrantedByUser,
+        )
         deny_permission = functools.partial(
-            page.setFeaturePermission, url, feature,
-            QWebEnginePage.PermissionPolicy.PermissionDeniedByUser)
+            page.setFeaturePermission,
+            url,
+            feature,
+            QWebEnginePage.PermissionPolicy.PermissionDeniedByUser,
+        )
 
         permission_str = debug.qenum_key(QWebEnginePage, feature)
 
         if not url.isValid():
-            log.webview.warning("Ignoring feature permission {} for invalid URL {}".format(
-                permission_str, url))
+            log.webview.warning(
+                "Ignoring feature permission {} for invalid URL {}".format(
+                    permission_str, url
+                )
+            )
             deny_permission()
             return
 
         if feature not in self._options:
-            log.webview.error("Unhandled feature permission {}".format(
-                permission_str))
+            log.webview.error("Unhandled feature permission {}".format(permission_str))
             deny_permission()
             return
 
         question = shared.feature_permission(
             url=url.adjusted(QUrl.UrlFormattingOption.RemovePath),
-            option=self._options[feature], msg=self._messages[feature],
-            yes_action=grant_permission, no_action=deny_permission,
-            abort_on=[self._tab.abort_questions])
+            option=self._options[feature],
+            msg=self._messages[feature],
+            yes_action=grant_permission,
+            no_action=deny_permission,
+            abort_on=[self._tab.abort_questions],
+        )
 
         if question is not None:
             page.featurePermissionRequestCanceled.connect(
-                functools.partial(self._on_feature_permission_cancelled,
-                                  question, url, feature))
+                functools.partial(
+                    self._on_feature_permission_cancelled, question, url, feature
+                )
+            )
 
-    def _on_feature_permission_cancelled(self, question, url, feature,
-                                         cancelled_url, cancelled_feature):
+    def _on_feature_permission_cancelled(
+        self, question, url, feature, cancelled_url, cancelled_feature
+    ):
         """Slot invoked when a feature permission request was cancelled.
 
         To be used with functools.partial.
@@ -1009,28 +1052,32 @@ class _WebEnginePermissions(QObject):
         size = utils.format_size(request.requestedSize())
         shared.feature_permission(
             url=request.origin().adjusted(QUrl.UrlFormattingOption.RemovePath),
-            option='content.persistent_storage',
-            msg='use {} of persistent storage'.format(size),
-            yes_action=request.accept, no_action=request.reject,
+            option="content.persistent_storage",
+            msg="use {} of persistent storage".format(size),
+            yes_action=request.accept,
+            no_action=request.reject,
             abort_on=[self._tab.abort_questions],
-            blocking=True)
+            blocking=True,
+        )
 
     def _on_register_protocol_handler_requested(self, request):
         shared.feature_permission(
             url=request.origin().adjusted(QUrl.UrlFormattingOption.RemovePath),
-            option='content.register_protocol_handler',
-            msg='open all {} links'.format(request.scheme()),
-            yes_action=request.accept, no_action=request.reject,
+            option="content.register_protocol_handler",
+            msg="open all {} links".format(request.scheme()),
+            yes_action=request.accept,
+            no_action=request.reject,
             abort_on=[self._tab.abort_questions],
-            blocking=True)
+            blocking=True,
+        )
 
 
 @dataclasses.dataclass
 class _Quirk:
-
     filename: str
     injection_point: QWebEngineScript.InjectionPoint = (
-        QWebEngineScript.InjectionPoint.DocumentCreation)
+        QWebEngineScript.InjectionPoint.DocumentCreation
+    )
     world: QWebEngineScript.ScriptWorldId = QWebEngineScript.ScriptWorldId.MainWorld
     predicate: bool = True
     name: Optional[str] = None
@@ -1041,7 +1088,6 @@ class _Quirk:
 
 
 class _WebEngineScripts(QObject):
-
     _widget: webview.WebEngineView
 
     def __init__(self, tab, parent=None):
@@ -1054,13 +1100,14 @@ class _WebEngineScripts(QObject):
         """Connect signals to our private slots."""
         config.instance.changed.connect(self._on_config_changed)
 
-        self._tab.search.cleared.connect(functools.partial(
-            self._update_stylesheet, searching=False))
+        self._tab.search.cleared.connect(
+            functools.partial(self._update_stylesheet, searching=False)
+        )
         self._tab.search.finished.connect(self._update_stylesheet)
 
     @pyqtSlot(str)
     def _on_config_changed(self, option):
-        if option in ['scrolling.bar', 'content.user_stylesheets']:
+        if option in ["scrolling.bar", "content.user_stylesheets"]:
             self._init_stylesheet()
             self._update_stylesheet()
 
@@ -1068,49 +1115,81 @@ class _WebEngineScripts(QObject):
     def _update_stylesheet(self, searching=False):
         """Update the custom stylesheet in existing tabs."""
         css = shared.get_user_stylesheet(searching=searching)
-        code = javascript.assemble('stylesheet', 'set_css', css)
+        code = javascript.assemble("stylesheet", "set_css", css)
         self._tab.run_js_async(code)
 
-    def _inject_js(self, name, js_code, *,
-                   world=QWebEngineScript.ScriptWorldId.ApplicationWorld,
-                   injection_point=QWebEngineScript.InjectionPoint.DocumentCreation,
-                   subframes=False):
+    def _inject_js(
+        self,
+        name,
+        js_code,
+        *,
+        world=QWebEngineScript.ScriptWorldId.ApplicationWorld,
+        injection_point=QWebEngineScript.InjectionPoint.DocumentCreation,
+        subframes=False,
+    ):
         """Inject the given script to run early on a page load."""
         script = QWebEngineScript()
         script.setInjectionPoint(injection_point)
         script.setSourceCode(js_code)
         script.setWorldId(world)
         script.setRunsOnSubFrames(subframes)
-        script.setName(f'_qute_{name}')
+        script.setName(f"_qute_{name}")
         self._widget.page().scripts().insert(script)
 
     def _remove_js(self, name):
         """Remove an early QWebEngineScript."""
         scripts = self._widget.page().scripts()
         if machinery.IS_QT6:
-            for script in scripts.find(f'_qute_{name}'):
+            for script in scripts.find(f"_qute_{name}"):
                 scripts.remove(script)
         else:  # Qt 5
-            script = scripts.findScript(f'_qute_{name}')
+            script = scripts.findScript(f"_qute_{name}")
             if not script.isNull():
                 scripts.remove(script)
 
     def init(self):
         """Initialize global qutebrowser JavaScript."""
         js_code = javascript.wrap_global(
-            'scripts',
-            resources.read_file('javascript/scroll.js'),
-            resources.read_file('javascript/webelem.js'),
-            resources.read_file('javascript/caret.js'),
+            "scripts",
+            resources.read_file("javascript/scroll.js"),
+            resources.read_file("javascript/webelem.js"),
+            resources.read_file("javascript/caret.js"),
         )
         # FIXME:qtwebengine what about subframes=True?
-        self._inject_js('js', js_code, subframes=True)
+        self._inject_js("js", js_code, subframes=True)
         self._init_stylesheet()
 
         self._greasemonkey.scripts_reloaded.connect(
-            self._inject_all_greasemonkey_scripts)
+            self._inject_all_greasemonkey_scripts
+        )
         self._inject_all_greasemonkey_scripts()
         self._inject_site_specific_quirks()
+        self._setup_onepassword()
+
+    def _setup_onepassword(self) -> None:
+        """Set up the 1Password autosave shim if the integration is enabled."""
+        if not config.val.onepassword.enabled:
+            return
+        from qutebrowser.qt.webchannel import QWebChannel  # noqa: PLC0415
+        from qutebrowser.browser.onepassword.channel import setup_for_page  # noqa: PLC0415
+        from qutebrowser.browser.onepassword.commands import _bridge  # noqa: PLC0415
+
+        page = self._widget.page()
+        # Keep the channel alive for the lifetime of the page by parenting it.
+        setup_for_page(page, self._tab, _bridge())
+
+        self._inject_js(
+            "onepassword_qwebchannel",
+            resources.read_file("javascript/qwebchannel.js"),
+            world=QWebEngineScript.ScriptWorldId.MainWorld,
+            injection_point=QWebEngineScript.InjectionPoint.DocumentCreation,
+        )
+        self._inject_js(
+            "onepassword_shim",
+            resources.read_file("javascript/onepassword_shim.js"),
+            world=QWebEngineScript.ScriptWorldId.MainWorld,
+            injection_point=QWebEngineScript.InjectionPoint.DocumentCreation,
+        )
 
     def _init_stylesheet(self):
         """Initialize custom stylesheets.
@@ -1118,14 +1197,14 @@ class _WebEngineScripts(QObject):
         Partially inspired by QupZilla:
         https://github.com/QupZilla/qupzilla/blob/v2.0/src/lib/app/mainapplication.cpp#L1063-L1101
         """
-        self._remove_js('stylesheet')
+        self._remove_js("stylesheet")
         css = shared.get_user_stylesheet()
         js_code = javascript.wrap_global(
-            'stylesheet',
-            resources.read_file('javascript/stylesheet.js'),
-            javascript.assemble('stylesheet', 'set_css', css),
+            "stylesheet",
+            resources.read_file("javascript/stylesheet.js"),
+            javascript.assemble("stylesheet", "set_css", css),
         )
-        self._inject_js('stylesheet', js_code, subframes=True)
+        self._inject_js("stylesheet", js_code, subframes=True)
 
     @pyqtSlot()
     def _inject_all_greasemonkey_scripts(self):
@@ -1136,8 +1215,7 @@ class _WebEngineScripts(QObject):
         page_scripts = self._widget.page().scripts()
         for script in page_scripts.toList():
             if script.name().startswith("GM-"):
-                log.greasemonkey.debug('Removing script: {}'
-                                       .format(script.name()))
+                log.greasemonkey.debug("Removing script: {}".format(script.name()))
                 removed = page_scripts.remove(script)
                 assert removed, script.name()
 
@@ -1172,7 +1250,8 @@ class _WebEngineScripts(QObject):
                     log.greasemonkey.error(
                         f"script {script.name} has invalid value for '@qute-js-world'"
                         f": {script.jsworld}, should be between 0 and "
-                        f"{qtutils.MAX_WORLD_ID}")
+                        f"{qtutils.MAX_WORLD_ID}"
+                    )
                     continue
             except ValueError:
                 try:
@@ -1180,7 +1259,8 @@ class _WebEngineScripts(QObject):
                 except KeyError:
                     log.greasemonkey.error(
                         f"script {script.name} has invalid value for '@qute-js-world'"
-                        f": {script.jsworld}")
+                        f": {script.jsworld}"
+                    )
                     continue
             new_script.setWorldId(world)
 
@@ -1200,10 +1280,13 @@ class _WebEngineScripts(QObject):
 
             if script.needs_document_end_workaround():
                 log.greasemonkey.debug(
-                    f"Forcing @run-at document-end for {script.name}")
-                new_script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
+                    f"Forcing @run-at document-end for {script.name}"
+                )
+                new_script.setInjectionPoint(
+                    QWebEngineScript.InjectionPoint.DocumentReady
+                )
 
-            log.greasemonkey.debug(f'adding script: {new_script.name()}')
+            log.greasemonkey.debug(f"adding script: {new_script.name()}")
             page_scripts.insert(new_script)
 
     def _get_quirks(self):
@@ -1212,23 +1295,22 @@ class _WebEngineScripts(QObject):
         return [
             # FIXME:qt6 Double check which of those are still required
             _Quirk(
-                'whatsapp_web',
+                "whatsapp_web",
                 injection_point=QWebEngineScript.InjectionPoint.DocumentReady,
                 world=QWebEngineScript.ScriptWorldId.ApplicationWorld,
             ),
-            _Quirk('discord'),
+            _Quirk("discord"),
             _Quirk(
-                'googledocs',
+                "googledocs",
                 # will be an UA quirk once we set the JS UA as well
-                name='ua-googledocs',
+                name="ua-googledocs",
             ),
-
             _Quirk(
-                'string_replaceall',
+                "string_replaceall",
                 predicate=versions.webengine < utils.VersionNumber(5, 15, 3),
             ),
             _Quirk(
-                'array_at',
+                "array_at",
                 predicate=versions.webengine < utils.VersionNumber(6, 3),
             ),
         ]
@@ -1241,10 +1323,10 @@ class _WebEngineScripts(QObject):
         for quirk in self._get_quirks():
             if not quirk.predicate:
                 continue
-            src = resources.read_file(f'javascript/quirks/{quirk.filename}.user.js')
+            src = resources.read_file(f"javascript/quirks/{quirk.filename}.user.js")
             if quirk.name not in config.val.content.site_specific_quirks.skip:
                 self._inject_js(
-                    f'quirk_{quirk.filename}',
+                    f"quirk_{quirk.filename}",
                     src,
                     world=quirk.world,
                     injection_point=quirk.injection_point,
@@ -1252,7 +1334,6 @@ class _WebEngineScripts(QObject):
 
 
 class _WebEngineWebAuth(QObject):
-
     """Handling of WebAuthn UX events.
 
     Signals:
@@ -1268,8 +1349,9 @@ class _WebEngineWebAuth(QObject):
 
     def on_ux_requested(self, request: QWebEngineWebAuthUxRequest) -> None:
         """Handle a WebAuthn UX request."""
-        log.webview.debug("Asking for WebAuthn user verification for "
-                          f"{request.relyingPartyId()}")
+        log.webview.debug(
+            f"Asking for WebAuthn user verification for {request.relyingPartyId()}"
+        )
         self._request = request
         request.stateChanged.connect(self._on_ux_state_changed)
         self._on_ux_state_changed(request.state())
@@ -1299,8 +1381,7 @@ class _WebEngineWebAuth(QObject):
         request = self._request
         relying_party_id = request.relyingPartyId()
         pin_text = self._get_pin_context_text(request.pinRequest())
-        log.webview.debug("Collect WebAuthn pin for "
-                          f"{relying_party_id}")
+        log.webview.debug(f"Collect WebAuthn pin for {relying_party_id}")
         answer = self._verification_required(relying_party_id, pin_text)
         if self._request is not request:
             return
@@ -1321,8 +1402,7 @@ class _WebEngineWebAuth(QObject):
         request = self._request
         relying_party_id = request.relyingPartyId()
         usernames = request.userNames()
-        log.webview.debug("Select WebAuthn account for "
-                          f"{relying_party_id}")
+        log.webview.debug(f"Select WebAuthn account for {relying_party_id}")
         answer = self._select_account(relying_party_id, usernames)
         if self._request is not request:
             return
@@ -1347,9 +1427,11 @@ class _WebEngineWebAuth(QObject):
     def _ux_request_failed(self) -> None:
         if self._request is None:
             return
-        log.webview.debug("WebAuthn request failed for "
-                          f"{self._request.relyingPartyId()}: "
-                          f"{self._request.requestFailureReason()}")
+        log.webview.debug(
+            "WebAuthn request failed for "
+            f"{self._request.relyingPartyId()}: "
+            f"{self._request.requestFailureReason()}"
+        )
 
         reason_text = self._get_failure_reason_text(
             self._request.requestFailureReason()
@@ -1361,37 +1443,24 @@ class _WebEngineWebAuth(QObject):
         self, reason: "QWebEngineWebAuthUxRequest.RequestFailureReason"
     ) -> str:
         texts = {
-            QWebEngineWebAuthUxRequest.RequestFailureReason.Timeout:
-                "The request timed out.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.KeyNotRegistered:
-                "This security key is not registered for this account.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.KeyAlreadyRegistered:
-                "This security key is already registered for this account.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.SoftPinBlock:
-                "The device is soft-locked because the wrong PIN was entered "
-                "too many times. Reinsert the security key before trying "
-                "again.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.HardPinBlock:
-                "The device is hard-locked because the wrong PIN was entered "
-                "too many times. Resetting FIDO2 on the security key is "
-                "required.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.AuthenticatorRemovedDuringPinEntry:
-                "The security key was removed during verification. Please "
-                "reinsert it and try again.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.AuthenticatorMissingResidentKeys:
-                "The security key does not support resident credentials.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.AuthenticatorMissingUserVerification:
-                "The security key does not support user verification.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.AuthenticatorMissingLargeBlob:
-                "The security key does not support large blob storage.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.NoCommonAlgorithms:
-                "No common algorithms between the site and the security key.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.StorageFull:
-                "The security key storage is full.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.UserConsentDenied:
-                "User consent was denied.",
-            QWebEngineWebAuthUxRequest.RequestFailureReason.WinUserCancelled:
-                "User cancelled the request.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.Timeout: "The request timed out.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.KeyNotRegistered: "This security key is not registered for this account.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.KeyAlreadyRegistered: "This security key is already registered for this account.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.SoftPinBlock: "The device is soft-locked because the wrong PIN was entered "
+            "too many times. Reinsert the security key before trying "
+            "again.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.HardPinBlock: "The device is hard-locked because the wrong PIN was entered "
+            "too many times. Resetting FIDO2 on the security key is "
+            "required.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.AuthenticatorRemovedDuringPinEntry: "The security key was removed during verification. Please "
+            "reinsert it and try again.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.AuthenticatorMissingResidentKeys: "The security key does not support resident credentials.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.AuthenticatorMissingUserVerification: "The security key does not support user verification.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.AuthenticatorMissingLargeBlob: "The security key does not support large blob storage.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.NoCommonAlgorithms: "No common algorithms between the site and the security key.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.StorageFull: "The security key storage is full.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.UserConsentDenied: "User consent was denied.",
+            QWebEngineWebAuthUxRequest.RequestFailureReason.WinUserCancelled: "User cancelled the request.",
         }
         if reason not in texts:
             raise utils.Unreachable(reason)
@@ -1402,24 +1471,16 @@ class _WebEngineWebAuth(QObject):
         pin_reason = QWebEngineWebAuthUxRequest.PinEntryReason
         pin_error = QWebEngineWebAuthUxRequest.PinEntryError
         reason_texts = {
-            pin_reason.Set:
-                "Set a new FIDO2 PIN for your security key.",
-            pin_reason.Change:
-                "Change the FIDO2 PIN for your security key.",
-            pin_reason.Challenge:
-                "Enter the FIDO2 PIN for your security key.",
+            pin_reason.Set: "Set a new FIDO2 PIN for your security key.",
+            pin_reason.Change: "Change the FIDO2 PIN for your security key.",
+            pin_reason.Challenge: "Enter the FIDO2 PIN for your security key.",
         }
         error_texts = {
-            pin_error.InternalUvLocked:
-                "Built-in verification is locked; use the FIDO2 PIN instead.",
-            pin_error.WrongPin:
-                "The previous PIN was incorrect.",
-            pin_error.TooShort:
-                "The PIN is too short.",
-            pin_error.InvalidCharacters:
-                "The PIN contains invalid characters.",
-            pin_error.SameAsCurrentPin:
-                "The new PIN must be different from the current PIN.",
+            pin_error.InternalUvLocked: "Built-in verification is locked; use the FIDO2 PIN instead.",
+            pin_error.WrongPin: "The previous PIN was incorrect.",
+            pin_error.TooShort: "The PIN is too short.",
+            pin_error.InvalidCharacters: "The PIN contains invalid characters.",
+            pin_error.SameAsCurrentPin: "The new PIN must be different from the current PIN.",
         }
 
         parts = [
@@ -1452,35 +1513,38 @@ class _WebEngineWebAuth(QObject):
             title=f"WebAuthn verification for {url}",
             text=text,
             mode=usertypes.PromptMode.pwd,
-            abort_on=[self._tab.abort_questions, self.request_cancelled])
+            abort_on=[self._tab.abort_questions, self.request_cancelled],
+        )
 
     def _select_account(self, url: str, usernames: list[str]) -> Any:
         """Ask a prompt for a webauth account selection."""
-        usernames_html = "".join(f"<li>{html_utils.escape(name)}</li>"
-                                 for name in usernames)
+        usernames_html = "".join(
+            f"<li>{html_utils.escape(name)}</li>" for name in usernames
+        )
         text = (
             "Select the account to use with this security key:"
             f"<br><ul>{usernames_html}</ul>"
         )
 
         return message.ask(
-            title=f"WebAuthn account selection for {url}", text=text,
-            choices=usernames, mode=usertypes.PromptMode.select,
-            abort_on=[self._tab.abort_questions, self.request_cancelled])
+            title=f"WebAuthn account selection for {url}",
+            text=text,
+            choices=usernames,
+            mode=usertypes.PromptMode.select,
+            abort_on=[self._tab.abort_questions, self.request_cancelled],
+        )
 
     def _cleanup_request(self) -> None:
         """Clean up the current WebAuthn request."""
         if self._request is not None:
             try:
-                self._request.stateChanged.disconnect(
-                    self._on_ux_state_changed)
+                self._request.stateChanged.disconnect(self._on_ux_state_changed)
             except (TypeError, RuntimeError):
                 pass
         self._request = None
 
 
 class WebEngineTabPrivate(browsertab.AbstractTabPrivate):
-
     """QtWebEngine-related methods which aren't part of the public API."""
 
     _widget: webview.WebEngineView
@@ -1510,7 +1574,6 @@ class WebEngineTabPrivate(browsertab.AbstractTabPrivate):
 
 
 class WebEngineTab(browsertab.AbstractTab):
-
     """A QtWebEngine tab in the browser.
 
     Signals:
@@ -1526,24 +1589,22 @@ class WebEngineTab(browsertab.AbstractTab):
     printing: WebEnginePrinting
 
     def __init__(self, *, win_id, mode_manager, private, parent=None):
-        super().__init__(win_id=win_id,
-                         mode_manager=mode_manager,
-                         private=private,
-                         parent=parent)
-        widget = webview.WebEngineView(tabdata=self.data, win_id=win_id,
-                                       private=private)
+        super().__init__(
+            win_id=win_id, mode_manager=mode_manager, private=private, parent=parent
+        )
+        widget = webview.WebEngineView(
+            tabdata=self.data, win_id=win_id, private=private
+        )
         self.history = WebEngineHistory(tab=self)
         self.scroller = WebEngineScroller(tab=self, parent=self)
-        self.caret = WebEngineCaret(mode_manager=mode_manager,
-                                    tab=self, parent=self)
+        self.caret = WebEngineCaret(mode_manager=mode_manager, tab=self, parent=self)
         self.zoom = WebEngineZoom(tab=self, parent=self)
         self.search = WebEngineSearch(tab=self, parent=self)
         self.printing = WebEnginePrinting(tab=self, parent=self)
         self.elements = WebEngineElements(tab=self)
         self.action = WebEngineAction(tab=self)
         self.audio = WebEngineAudio(tab=self, parent=self)
-        self.private_api = WebEngineTabPrivate(mode_manager=mode_manager,
-                                               tab=self)
+        self.private_api = WebEngineTabPrivate(mode_manager=mode_manager, tab=self)
         self._permissions = _WebEnginePermissions(tab=self, parent=self)
         self._scripts = _WebEngineScripts(tab=self, parent=self)
         if QWebEngineWebAuthUxRequest is not None:
@@ -1558,7 +1619,8 @@ class WebEngineTab(browsertab.AbstractTab):
         self._scripts.init()
         # WORKAROUND for https://bugreports.qt.io/browse/QTBUG-65223
         self._needs_qtbug65223_workaround = (
-            version.qtwebengine_versions().webengine < utils.VersionNumber(5, 15, 5))
+            version.qtwebengine_versions().webengine < utils.VersionNumber(5, 15, 5)
+        )
 
     def _set_widget(self, widget):
         # pylint: disable=protected-access
@@ -1572,9 +1634,8 @@ class WebEngineTab(browsertab.AbstractTab):
             fp.installEventFilter(self._tab_event_filter)
 
         self._child_event_filter = eventfilter.ChildEventFilter(
-            eventfilter=self._tab_event_filter,
-            widget=self._widget,
-            parent=self)
+            eventfilter=self._tab_event_filter, widget=self._widget, parent=self
+        )
         self._widget.installEventFilter(self._child_event_filter)
 
     @pyqtSlot()
@@ -1626,8 +1687,8 @@ class WebEngineTab(browsertab.AbstractTab):
             world_id = world
             if not 0 <= world_id <= qtutils.MAX_WORLD_ID:
                 raise browsertab.WebTabError(
-                    "World ID should be between 0 and {}"
-                    .format(qtutils.MAX_WORLD_ID))
+                    "World ID should be between 0 and {}".format(qtutils.MAX_WORLD_ID)
+                )
         else:
             world_id = _JS_WORLD_MAP[world]
 
@@ -1669,9 +1730,11 @@ class WebEngineTab(browsertab.AbstractTab):
         log.misc.debug("Showing error page for {}".format(error))
         url_string = url.toDisplayString()
         error_page = jinja.render(
-            'error.html',
+            "error.html",
             title="Error loading page: {}".format(url_string),
-            url=url_string, error=error)
+            url=url_string,
+            error=error,
+        )
         self.set_html(error_page)
 
     @pyqtSlot()
@@ -1691,9 +1754,9 @@ class WebEngineTab(browsertab.AbstractTab):
         # Don't save the title if it's generated from the URL
         title = self.title()
         title_url = QUrl(url)
-        title_url.setScheme('')
+        title_url.setScheme("")
         title_url_str = title_url.toDisplayString(urlutils.FormatOption.REMOVE_SCHEME)
-        if title == title_url_str.strip('/'):
+        if title == title_url_str.strip("/"):
             title = ""
 
         # Don't add history entry if the URL is invalid anyways
@@ -1703,17 +1766,23 @@ class WebEngineTab(browsertab.AbstractTab):
 
         self.history_item_triggered.emit(url, requested_url, title)
 
-    @pyqtSlot(QUrl, 'QAuthenticator*', 'QString')
-    def _on_proxy_authentication_required(self, url, authenticator,
-                                          proxy_host):
+    @pyqtSlot(QUrl, "QAuthenticator*", "QString")
+    def _on_proxy_authentication_required(self, url, authenticator, proxy_host):
         """Called when a proxy needs authentication."""
         msg = "<b>{}</b> requires a username and password.".format(
-            html_utils.escape(proxy_host))
-        urlstr = url.toString(QUrl.UrlFormattingOption.RemovePassword | QUrl.ComponentFormattingOption.FullyEncoded)
+            html_utils.escape(proxy_host)
+        )
+        urlstr = url.toString(
+            QUrl.UrlFormattingOption.RemovePassword
+            | QUrl.ComponentFormattingOption.FullyEncoded
+        )
         answer = message.ask(
-            title="Proxy authentication required", text=msg,
+            title="Proxy authentication required",
+            text=msg,
             mode=usertypes.PromptMode.user_pwd,
-            abort_on=[self.abort_questions], url=urlstr)
+            abort_on=[self.abort_questions],
+            url=urlstr,
+        )
 
         if answer is None:
             sip.assign(authenticator, QAuthenticator())
@@ -1722,10 +1791,13 @@ class WebEngineTab(browsertab.AbstractTab):
         authenticator.setUser(answer.user)
         authenticator.setPassword(answer.password)
 
-    @pyqtSlot(QUrl, 'QAuthenticator*')
+    @pyqtSlot(QUrl, "QAuthenticator*")
     def _on_authentication_required(self, url, authenticator):
-        log.network.debug("Authentication requested for {}, netrc_used {}"
-                          .format(url.toDisplayString(), self.data.netrc_used))
+        log.network.debug(
+            "Authentication requested for {}, netrc_used {}".format(
+                url.toDisplayString(), self.data.netrc_used
+            )
+        )
 
         netrc_success = False
         if not self.data.netrc_used:
@@ -1735,7 +1807,8 @@ class WebEngineTab(browsertab.AbstractTab):
         if not netrc_success:
             log.network.debug("Asking for credentials")
             answer = shared.authentication_required(
-                url, authenticator, abort_on=[self.abort_questions])
+                url, authenticator, abort_on=[self.abort_questions]
+            )
             if answer is None:
                 log.network.debug("Aborting auth")
                 sip.assign(authenticator, QAuthenticator())
@@ -1750,30 +1823,33 @@ class WebEngineTab(browsertab.AbstractTab):
         super()._on_load_started()
         self.data.netrc_used = False
 
-    @pyqtSlot('qint64')
+    @pyqtSlot("qint64")
     def _on_renderer_process_pid_changed(self, pid):
-        log.webview.debug("Renderer process PID for tab {}: {}"
-                          .format(self.tab_id, pid))
+        log.webview.debug(
+            "Renderer process PID for tab {}: {}".format(self.tab_id, pid)
+        )
 
     @pyqtSlot(QWebEnginePage.RenderProcessTerminationStatus, int)
     def _on_render_process_terminated(self, status, exitcode):
         """Show an error when the renderer process terminated."""
-        if (status == QWebEnginePage.RenderProcessTerminationStatus.AbnormalTerminationStatus and
-                exitcode == 256):
+        if (
+            status
+            == QWebEnginePage.RenderProcessTerminationStatus.AbnormalTerminationStatus
+            and exitcode == 256
+        ):
             # WORKAROUND for https://bugreports.qt.io/browse/QTBUG-58697
-            status = QWebEnginePage.RenderProcessTerminationStatus.CrashedTerminationStatus
+            status = (
+                QWebEnginePage.RenderProcessTerminationStatus.CrashedTerminationStatus
+            )
 
         status_map = {
-            QWebEnginePage.RenderProcessTerminationStatus.NormalTerminationStatus:
-                browsertab.TerminationStatus.normal,
-            QWebEnginePage.RenderProcessTerminationStatus.AbnormalTerminationStatus:
-                browsertab.TerminationStatus.abnormal,
-            QWebEnginePage.RenderProcessTerminationStatus.CrashedTerminationStatus:
-                browsertab.TerminationStatus.crashed,
-            QWebEnginePage.RenderProcessTerminationStatus.KilledTerminationStatus:
-                browsertab.TerminationStatus.killed,
-            QWebEnginePage.RenderProcessTerminationStatus(-1):
-                browsertab.TerminationStatus.unknown,
+            QWebEnginePage.RenderProcessTerminationStatus.NormalTerminationStatus: browsertab.TerminationStatus.normal,
+            QWebEnginePage.RenderProcessTerminationStatus.AbnormalTerminationStatus: browsertab.TerminationStatus.abnormal,
+            QWebEnginePage.RenderProcessTerminationStatus.CrashedTerminationStatus: browsertab.TerminationStatus.crashed,
+            QWebEnginePage.RenderProcessTerminationStatus.KilledTerminationStatus: browsertab.TerminationStatus.killed,
+            QWebEnginePage.RenderProcessTerminationStatus(
+                -1
+            ): browsertab.TerminationStatus.unknown,
         }
         self.renderer_process_terminated.emit(status_map[status], exitcode)
 
@@ -1803,9 +1879,9 @@ class WebEngineTab(browsertab.AbstractTab):
         """QtWebEngine-specific loadProgress workarounds."""
         super()._on_load_progress(perc)
         if (
-            self._needs_qtbug65223_workaround and
-            perc == 100 and
-            self.load_status() != usertypes.LoadStatus.error
+            self._needs_qtbug65223_workaround
+            and perc == 100
+            and self.load_status() != usertypes.LoadStatus.error
         ):
             self._update_load_status(ok=True)
 
@@ -1819,9 +1895,12 @@ class WebEngineTab(browsertab.AbstractTab):
             self._update_load_status(ok)
 
         if not ok:
-            self.dump_async(functools.partial(
-                self._error_page_workaround,
-                self.settings.test_attribute('content.javascript.enabled')))
+            self.dump_async(
+                functools.partial(
+                    self._error_page_workaround,
+                    self.settings.test_attribute("content.javascript.enabled"),
+                )
+            )
 
     @pyqtSlot(certificateerror.CertificateErrorWrapper)
     def _on_ssl_errors(self, error):
@@ -1845,11 +1924,13 @@ class WebEngineTab(browsertab.AbstractTab):
                 abort_on=[self.abort_questions],
             )
         else:
-            log.network.error("Non-overridable certificate error: "
-                              "{}".format(error))
+            log.network.error("Non-overridable certificate error: {}".format(error))
 
-        log.network.debug("ignore {}, URL {}, requested {}".format(
-            error.ignore, url, self.url(requested=True)))
+        log.network.debug(
+            "ignore {}, URL {}, requested {}".format(
+                error.ignore, url, self.url(requested=True)
+            )
+        )
 
     @pyqtSlot()
     def _on_print_requested(self):
@@ -1867,14 +1948,18 @@ class WebEngineTab(browsertab.AbstractTab):
         local_schemes = {"qute", "file"}
         qtwe_ver = version.qtwebengine_versions().webengine
         if (
-            navigation.accepted and
-            self.url().scheme().lower() in local_schemes and
-            navigation.url.scheme().lower() not in local_schemes and
-            (navigation.navigation_type ==
-                usertypes.NavigationRequest.Type.link_clicked) and
-            navigation.is_main_frame and
-            (utils.VersionNumber(6, 2) <= qtwe_ver < utils.VersionNumber(6, 2, 5) or
-             utils.VersionNumber(6, 3) <= qtwe_ver < utils.VersionNumber(6, 3, 1))
+            navigation.accepted
+            and self.url().scheme().lower() in local_schemes
+            and navigation.url.scheme().lower() not in local_schemes
+            and (
+                navigation.navigation_type
+                == usertypes.NavigationRequest.Type.link_clicked
+            )
+            and navigation.is_main_frame
+            and (
+                utils.VersionNumber(6, 2) <= qtwe_ver < utils.VersionNumber(6, 2, 5)
+                or utils.VersionNumber(6, 3) <= qtwe_ver < utils.VersionNumber(6, 3, 1)
+            )
         ):
             log.webview.debug(
                 "Working around blocked request from local page "
@@ -1886,16 +1971,18 @@ class WebEngineTab(browsertab.AbstractTab):
         # WORKAROUND for QtWebEngine >= 6.2 not allowing form requests from
         # qute:// to outside domains.
         if (
-            qtwe_ver >= utils.VersionNumber(6, 2) and
-            self.url() == QUrl("qute://start/") and
-            navigation.navigation_type == navigation.Type.form_submitted and
-            navigation.url.matches(
-                QUrl(config.val.url.searchengines['DEFAULT']),
-                urlutils.FormatOption.REMOVE_QUERY)
+            qtwe_ver >= utils.VersionNumber(6, 2)
+            and self.url() == QUrl("qute://start/")
+            and navigation.navigation_type == navigation.Type.form_submitted
+            and navigation.url.matches(
+                QUrl(config.val.url.searchengines["DEFAULT"]),
+                urlutils.FormatOption.REMOVE_QUERY,
+            )
         ):
             log.webview.debug(
                 "Working around qute://start loading issue for "
-                f"{navigation.url.toDisplayString()}")
+                f"{navigation.url.toDisplayString()}"
+            )
             navigation.accepted = False
             # Using QTimer.singleShot as WORKAROUND for this crashing otherwise
             # with QtWebEngine 6.10: https://bugreports.qt.io/browse/QTBUG-140543
@@ -1903,13 +1990,14 @@ class WebEngineTab(browsertab.AbstractTab):
 
         # WORKAROUND for QtWebEngine 6.2 - 6.5 blocking back/forward navigation too
         if (
-            utils.VersionNumber(6, 6) > qtwe_ver >= utils.VersionNumber(6, 2) and
-            self.url() == QUrl("qute://bookmarks/") and
-            navigation.navigation_type == navigation.Type.back_forward
+            utils.VersionNumber(6, 6) > qtwe_ver >= utils.VersionNumber(6, 2)
+            and self.url() == QUrl("qute://bookmarks/")
+            and navigation.navigation_type == navigation.Type.back_forward
         ):
             log.webview.debug(
                 "Working around qute://bookmarks loading issue for "
-                f"{navigation.url.toDisplayString()}")
+                f"{navigation.url.toDisplayString()}"
+            )
             navigation.accepted = False
             self.load_url(navigation.url)
 
@@ -1940,24 +2028,30 @@ class WebEngineTab(browsertab.AbstractTab):
         additional note if there are multiple matches.
         """
         certificate = selection.certificates()[0]
-        text = ('<b>Subject:</b> {subj}<br/>'
-                '<b>Issuer:</b> {issuer}<br/>'
-                '<b>Serial:</b> {serial}'.format(
-                    subj=html_utils.escape(certificate.subjectDisplayName()),
-                    issuer=html_utils.escape(certificate.issuerDisplayName()),
-                    serial=bytes(certificate.serialNumber()).decode('ascii')))
+        text = (
+            "<b>Subject:</b> {subj}<br/>"
+            "<b>Issuer:</b> {issuer}<br/>"
+            "<b>Serial:</b> {serial}".format(
+                subj=html_utils.escape(certificate.subjectDisplayName()),
+                issuer=html_utils.escape(certificate.issuerDisplayName()),
+                serial=bytes(certificate.serialNumber()).decode("ascii"),
+            )
+        )
         if len(selection.certificates()) > 1:
-            text += ('<br/><br/><b>Note:</b> Multiple matching certificates '
-                     'were found, but certificate selection is not '
-                     'implemented yet!')
+            text += (
+                "<br/><br/><b>Note:</b> Multiple matching certificates "
+                "were found, but certificate selection is not "
+                "implemented yet!"
+            )
         urlstr = selection.host().host()
 
         present = message.ask(
-            title='Present client certificate to {}?'.format(urlstr),
+            title="Present client certificate to {}?".format(urlstr),
             text=text,
             mode=usertypes.PromptMode.yesno,
             abort_on=[self.abort_questions],
-            url=urlstr)
+            url=urlstr,
+        )
 
         if present:
             selection.select(certificate)
@@ -1977,8 +2071,7 @@ class WebEngineTab(browsertab.AbstractTab):
         page.authenticationRequired.connect(self._on_authentication_required)
         if machinery.IS_QT6 and QWebEngineWebAuthUxRequest is not None:
             page.webAuthUxRequested.connect(self._webauth.on_ux_requested)
-        page.proxyAuthenticationRequired.connect(
-            self._on_proxy_authentication_required)
+        page.proxyAuthenticationRequired.connect(self._on_proxy_authentication_required)
         page.contentsSizeChanged.connect(self.contents_size_changed)
         page.navigation_request.connect(self._on_navigation_request)
         page.printRequested.connect(self._on_print_requested)
@@ -1986,8 +2079,7 @@ class WebEngineTab(browsertab.AbstractTab):
 
         view.titleChanged.connect(self.title_changed)
         view.urlChanged.connect(self._on_url_changed)
-        view.renderProcessTerminated.connect(
-            self._on_render_process_terminated)
+        view.renderProcessTerminated.connect(self._on_render_process_terminated)
         view.iconChanged.connect(self.icon_changed)
 
         page.loadFinished.connect(self._on_history_trigger)
