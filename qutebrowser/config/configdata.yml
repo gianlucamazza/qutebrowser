@@ -4097,6 +4097,60 @@ bindings.commands:
     * register: Entered when qutebrowser is waiting for a register name/key for
       commands like `:set-mark`.
 
+## onepassword
+
+onepassword.enabled:
+  default: false
+  type: Bool
+  desc: >-
+    Enable experimental 1Password integration.
+
+    Requires the qute-1pass-sidecar daemon to be running. See
+    misc/onepassword-sidecar/ for setup instructions.
+
+onepassword.backend:
+  default: op-cli
+  type:
+    name: String
+    valid_values:
+      - op-cli: Use the official `op` CLI v2 (recommended, ToS-clean).
+      - native: Use the reverse-engineered 1Password desktop-app protocol
+          (experimental, requires onepassword.experimental_bridge = true).
+  desc: >-
+    Backend used by the 1Password sidecar.
+
+    `op-cli` shells out to the `op` binary and supports biometric unlock via
+    the 1Password desktop app. `native` speaks the internal browser-extension
+    protocol and is required for passkey signing; it may break on 1Password
+    updates.
+
+onepassword.experimental_bridge:
+  default: false
+  type: Bool
+  desc: >-
+    Allow the `native` backend for the 1Password sidecar.
+
+    WARNING: The native backend reverse-engineers 1Password's internal
+    extension protocol and likely violates 1Password's Terms of Service.
+    It may break without notice on any 1Password update. Only enable this
+    if you understand and accept those risks.
+
+onepassword.socket_path:
+  default: ""
+  type: String
+  desc: >-
+    Path to the 1Password sidecar Unix socket.
+
+    If empty, defaults to `$XDG_RUNTIME_DIR/qute-1pass.sock`.
+
+onepassword.autosave_on_submit:
+  default: true
+  type: Bool
+  desc: >-
+    Offer to save new credentials to 1Password after a form submission.
+
+    Not yet implemented; reserved for Phase B.
+
 ## logging
 
 logging.level.ram:

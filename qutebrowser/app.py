@@ -39,34 +39,62 @@ from qutebrowser.qt.core import pyqtSlot, QUrl, QObject, QEvent, pyqtSignal, Qt
 
 import qutebrowser
 from qutebrowser.commands import runners
-from qutebrowser.config import (config, websettings, configfiles, configinit,
-                                qtargs)
-from qutebrowser.browser import (urlmarks, history, browsertab,
-                                 qtnetworkdownloads, downloads, greasemonkey)
+from qutebrowser.config import config, websettings, configfiles, configinit, qtargs
+from qutebrowser.browser import (
+    urlmarks,
+    history,
+    browsertab,
+    qtnetworkdownloads,
+    downloads,
+    greasemonkey,
+)
 from qutebrowser.browser.network import proxy
 from qutebrowser.browser.webkit import cookies, cache
 from qutebrowser.browser.webkit.network import networkmanager
 from qutebrowser.extensions import loader
 from qutebrowser.keyinput import macros, eventfilter
 from qutebrowser.mainwindow import mainwindow, prompt, windowundo
-from qutebrowser.misc import (ipc, savemanager, sessions, crashsignal,
-                              earlyinit, sql, cmdhistory, backendproblem,
-                              objects, quitter, nativeeventfilter)
-from qutebrowser.utils import (log, version, message, utils, urlutils, objreg,
-                               resources, usertypes, standarddir,
-                               error, qtutils, debug)
+from qutebrowser.misc import (
+    ipc,
+    savemanager,
+    sessions,
+    crashsignal,
+    earlyinit,
+    sql,
+    cmdhistory,
+    backendproblem,
+    objects,
+    quitter,
+    nativeeventfilter,
+)
+from qutebrowser.utils import (
+    log,
+    version,
+    message,
+    utils,
+    urlutils,
+    objreg,
+    resources,
+    usertypes,
+    standarddir,
+    error,
+    qtutils,
+    debug,
+)
+
 # pylint: disable=unused-import
 # We import those to run the cmdutils.register decorators.
 from qutebrowser.mainwindow.statusbar import command
 from qutebrowser.misc import utilcmds
 from qutebrowser.browser import commands
+from qutebrowser.browser.onepassword import commands as onepassword_commands  # noqa: F401
 # pylint: enable=unused-import
 
 
 def run(args):
     """Initialize everything and run the application."""
     if args.temp_basedir:
-        args.basedir = tempfile.mkdtemp(prefix='qutebrowser-basedir-')
+        args.basedir = tempfile.mkdtemp(prefix="qutebrowser-basedir-")
 
     log.init.debug("Main process PID: {}".format(os.getpid()))
 
@@ -102,16 +130,17 @@ def run(args):
 
     if server is None:
         if args.backend is not None:
-            log.init.warning(
-                "Backend from the running instance will be used")
+            log.init.warning("Backend from the running instance will be used")
         sys.exit(usertypes.Exit.ok)
 
     init(args=args)
 
     quitter.instance.shutting_down.connect(server.shutdown)
     server.got_args.connect(
-        lambda args, target_arg, cwd:
-        process_pos_args(args, cwd=cwd, via_ipc=True, target_arg=target_arg))
+        lambda args, target_arg, cwd: process_pos_args(
+            args, cwd=cwd, via_ipc=True, target_arg=target_arg
+        )
+    )
 
     ret = qt_mainloop()
     return ret
@@ -145,9 +174,12 @@ def init(*, args: argparse.Namespace) -> None:
     try:
         _init_modules(args=args)
     except (OSError, UnicodeDecodeError, browsertab.WebTabError) as e:
-        error.handle_fatal_exc(e, "Error while initializing!",
-                               no_err_windows=args.no_err_windows,
-                               pre_text="Error while initializing")
+        error.handle_fatal_exc(
+            e,
+            "Error while initializing!",
+            no_err_windows=args.no_err_windows,
+            pre_text="Error while initializing",
+        )
         sys.exit(usertypes.Exit.err_init)
 
     log.init.debug("Initializing eventfilter...")
@@ -158,9 +190,8 @@ def init(*, args: argparse.Namespace) -> None:
 
     _process_args(args)
 
-    for scheme in ['http', 'https', 'qute']:
-        QDesktopServices.setUrlHandler(
-            scheme, open_desktopservices_url)
+    for scheme in ["http", "https", "qute"]:
+        QDesktopServices.setUrlHandler(scheme, open_desktopservices_url)
 
     log.init.debug("Init done!")
     crashsignal.crash_handler.raise_crashdlg()
@@ -170,14 +201,14 @@ def _init_icon():
     """Initialize the icon of qutebrowser."""
     fallback_icon = QIcon()
     for size in [16, 24, 32, 48, 64, 96, 128, 256, 512]:
-        filename = 'icons/qutebrowser-{size}x{size}.png'.format(size=size)
+        filename = "icons/qutebrowser-{size}x{size}.png".format(size=size)
         pixmap = QPixmap()
         pixmap.loadFromData(resources.read_file_binary(filename))
         if pixmap.isNull():
             log.init.warning("Failed to load {}".format(filename))
         else:
             fallback_icon.addPixmap(pixmap)
-    icon = QIcon.fromTheme('qutebrowser', fallback_icon)
+    icon = QIcon.fromTheme("qutebrowser", fallback_icon)
     if icon.isNull():
         log.init.warning("Failed to load icon")
     else:
@@ -192,13 +223,16 @@ def _process_args(args):
     new_window = None
     if not sessions.session_manager.did_load:
         log.init.debug("Initializing main window...")
-        private = args.target == 'private-window'
-        if (config.val.content.private_browsing or
-                private) and qtutils.is_single_process():
-            err = Exception("Private windows are unavailable with "
-                            "the single-process process model.")
-            error.handle_fatal_exc(err, 'Cannot start in private mode',
-                                   no_err_windows=args.no_err_windows)
+        private = args.target == "private-window"
+        if (
+            config.val.content.private_browsing or private
+        ) and qtutils.is_single_process():
+            err = Exception(
+                "Private windows are unavailable with the single-process process model."
+            )
+            error.handle_fatal_exc(
+                err, "Cannot start in private mode", no_err_windows=args.no_err_windows
+            )
             sys.exit(usertypes.Exit.err_init)
 
         new_window = mainwindow.MainWindow(private=private)
@@ -228,15 +262,14 @@ def process_pos_args(args, via_ipc=False, cwd=None, target_arg=None):
                     ipc. If the --target argument was not specified, target_arg
                     will be an empty string.
     """
-    new_window_target = ('private-window' if target_arg == 'private-window'
-                         else 'window')
+    new_window_target = "private-window" if target_arg == "private-window" else "window"
     command_target = config.val.new_instance_open_target
-    if command_target in {'window', 'private-window'}:
-        command_target = 'tab-silent'
+    if command_target in {"window", "private-window"}:
+        command_target = "tab-silent"
 
     window: Optional[mainwindow.MainWindow] = None
 
-    if via_ipc and (not args or args == ['']):
+    if via_ipc and (not args or args == [""]):
         window = mainwindow.get_window(via_ipc=via_ipc, target=new_window_target)
         _open_startpage(window)
         window.show()
@@ -244,7 +277,7 @@ def process_pos_args(args, via_ipc=False, cwd=None, target_arg=None):
         return
 
     for cmd in args:
-        if cmd.startswith(':'):
+        if cmd.startswith(":"):
             if window is None:
                 window = mainwindow.get_window(via_ipc=via_ipc, target=command_target)
                 # FIXME preserving old behavior, but we probably shouldn't be
@@ -259,7 +292,7 @@ def process_pos_args(args, via_ipc=False, cwd=None, target_arg=None):
             log.init.debug("Empty argument")
             window = mainwindow.get_window(via_ipc=via_ipc, target=new_window_target)
         else:
-            if via_ipc and target_arg and target_arg != 'auto':
+            if via_ipc and target_arg and target_arg != "auto":
                 open_target = target_arg
             else:
                 open_target = None
@@ -268,8 +301,7 @@ def process_pos_args(args, via_ipc=False, cwd=None, target_arg=None):
             try:
                 url = urlutils.fuzzy_url(cmd, cwd, relative=True)
             except urlutils.InvalidUrlError as e:
-                message.error("Error in startup argument '{}': {}".format(
-                    cmd, e))
+                message.error("Error in startup argument '{}': {}".format(cmd, e))
             else:
                 window = open_url(url, target=open_target, via_ipc=via_ipc)
 
@@ -287,7 +319,7 @@ def open_url(url, target=None, no_raise=False, via_ipc=True):
         The MainWindow of a window that was used to open the URL.
     """
     target = target or config.val.new_instance_open_target
-    background = target in {'tab-bg', 'tab-bg-silent'}
+    background = target in {"tab-bg", "tab-bg-silent"}
     window = mainwindow.get_window(via_ipc=via_ipc, target=target, no_raise=no_raise)
     log.init.debug("About to open URL: {}".format(url.toDisplayString()))
     window.tabbed_browser.tabopen(url, background=background, related=False)
@@ -327,52 +359,49 @@ def _open_special_pages(args):
         # With --basedir given, don't open anything.
         return
 
-    general_sect = configfiles.state['general']
-    tabbed_browser = objreg.get('tabbed-browser', scope='window',
-                                window='last-focused')
+    general_sect = configfiles.state["general"]
+    tabbed_browser = objreg.get("tabbed-browser", scope="window", window="last-focused")
 
     pages: list[tuple[str, bool, str]] = [
         # state, condition, URL
-        ('quickstart-done',
-         True,
-         'https://www.qutebrowser.org/quickstart.html'),
-
-        ('config-migration-shown',
-         os.path.exists(os.path.join(standarddir.config(),
-                                     'qutebrowser.conf')),
-         'qute://help/configuring.html'),
-
-        ('webkit-warning-shown',
-         objects.backend == usertypes.Backend.QtWebKit,
-         'qute://warning/webkit'),
-
-        ('session-warning-shown',
-         True,
-         'qute://warning/sessions'),
-
-        ('qt5-warning-shown',
-         (
-             machinery.IS_QT5 and
-             machinery.INFO.reason == machinery.SelectionReason.auto and
-             objects.backend != usertypes.Backend.QtWebKit
-         ),
-         'qute://warning/qt5'),
-
-        ('birthday-2023-shown',
-         datetime.date.today() == datetime.date(2023, 12, 14),
-         'https://qutebrowser.org/birthday.html'),
+        ("quickstart-done", True, "https://www.qutebrowser.org/quickstart.html"),
+        (
+            "config-migration-shown",
+            os.path.exists(os.path.join(standarddir.config(), "qutebrowser.conf")),
+            "qute://help/configuring.html",
+        ),
+        (
+            "webkit-warning-shown",
+            objects.backend == usertypes.Backend.QtWebKit,
+            "qute://warning/webkit",
+        ),
+        ("session-warning-shown", True, "qute://warning/sessions"),
+        (
+            "qt5-warning-shown",
+            (
+                machinery.IS_QT5
+                and machinery.INFO.reason == machinery.SelectionReason.auto
+                and objects.backend != usertypes.Backend.QtWebKit
+            ),
+            "qute://warning/qt5",
+        ),
+        (
+            "birthday-2023-shown",
+            datetime.date.today() == datetime.date(2023, 12, 14),
+            "https://qutebrowser.org/birthday.html",
+        ),
     ]
 
-    if 'quickstart-done' not in general_sect:
+    if "quickstart-done" not in general_sect:
         # New users aren't going to be affected by the Qt 5.15 session change much, as
         # they aren't used to qutebrowser saving the full back/forward history in
         # sessions.
-        general_sect['session-warning-shown'] = '1'
+        general_sect["session-warning-shown"] = "1"
 
     for state, condition, url in pages:
-        if general_sect.get(state) != '1' and condition:
+        if general_sect.get(state) != "1" and condition:
             tabbed_browser.tabopen(QUrl(url), background=False)
-            general_sect[state] = '1'
+            general_sect[state] = "1"
 
     # Show changelog on new releases
     change = configfiles.state.qutebrowser_version_changed
@@ -382,11 +411,12 @@ def _open_special_pages(args):
     setting = config.val.changelog_after_upgrade
     if not change.matches_filter(setting):
         log.init.debug(
-            f"Showing changelog is disabled (setting {setting}, change {change})")
+            f"Showing changelog is disabled (setting {setting}, change {change})"
+        )
         return
 
     try:
-        changelog = resources.read_file('html/doc/changelog.html')
+        changelog = resources.read_file("html/doc/changelog.html")
     except OSError as e:
         log.init.warning(f"Not showing changelog due to {e}")
         return
@@ -397,7 +427,7 @@ def _open_special_pages(args):
         return
 
     message.info(f"Showing changelog after upgrade to qutebrowser v{qbversion}.")
-    changelog_url = f'qute://help/changelog.html#v{qbversion}'
+    changelog_url = f"qute://help/changelog.html#v{qbversion}"
     tabbed_browser.tabopen(QUrl(changelog_url), background=False)
 
 
@@ -407,16 +437,15 @@ def on_focus_changed(_old, new):
         return
 
     if not isinstance(new, QWidget):
-        log.misc.debug("on_focus_changed called with non-QWidget {!r}".format(
-            new))
+        log.misc.debug("on_focus_changed called with non-QWidget {!r}".format(new))
         return
 
     window = new.window()
     if isinstance(window, mainwindow.MainWindow):
-        objreg.register('last-focused-main-window', window, update=True)
+        objreg.register("last-focused-main-window", window, update=True)
         # A focused window must also be visible, and in this case we should
         # consider it as the most recently looked-at window
-        objreg.register('last-visible-main-window', window, update=True)
+        objreg.register("last-visible-main-window", window, update=True)
 
 
 def open_desktopservices_url(url):
@@ -431,7 +460,7 @@ def open_desktopservices_url(url):
 # This is effectively a @config.change_filter
 # However, logging is initialized too early to use that annotation
 def _on_config_changed(name: str) -> None:
-    if name.startswith('logging.'):
+    if name.startswith("logging."):
         log.init_from_config(config.val)
 
 
@@ -447,7 +476,7 @@ def _init_modules(*, args):
 
     log.init.debug("Initializing save manager...")
     save_manager = savemanager.SaveManager(objects.qapp)
-    objreg.register('save-manager', save_manager)
+    objreg.register("save-manager", save_manager)
     quitter.instance.shutting_down.connect(save_manager.shutdown)
     configinit.late_init(save_manager)
 
@@ -471,12 +500,17 @@ def _init_modules(*, args):
     with debug.log_time("init", "Initializing SQL/history"):
         try:
             log.init.debug("Initializing web history...")
-            history.init(db_path=pathlib.Path(standarddir.data()) / 'history.sqlite',
-                         parent=objects.qapp)
+            history.init(
+                db_path=pathlib.Path(standarddir.data()) / "history.sqlite",
+                parent=objects.qapp,
+            )
         except sql.KnownError as e:
-            error.handle_fatal_exc(e, 'Error initializing SQL',
-                                   pre_text='Error initializing SQL',
-                                   no_err_windows=args.no_err_windows)
+            error.handle_fatal_exc(
+                e,
+                "Error initializing SQL",
+                pre_text="Error initializing SQL",
+                no_err_windows=args.no_err_windows,
+            )
             sys.exit(usertypes.Exit.err_init)
 
     log.init.debug("Initializing command history...")
@@ -494,11 +528,11 @@ def _init_modules(*, args):
 
     log.init.debug("Initializing quickmarks...")
     quickmark_manager = urlmarks.QuickmarkManager(objects.qapp)
-    objreg.register('quickmark-manager', quickmark_manager)
+    objreg.register("quickmark-manager", quickmark_manager)
 
     log.init.debug("Initializing bookmarks...")
     bookmark_manager = urlmarks.BookmarkManager(objects.qapp)
-    objreg.register('bookmark-manager', bookmark_manager)
+    objreg.register("bookmark-manager", bookmark_manager)
 
     log.init.debug("Initializing cookies...")
     cookies.init(objects.qapp)
@@ -519,7 +553,6 @@ def _init_modules(*, args):
 
 
 class Application(QApplication):
-
     """Main application instance.
 
     Attributes:
@@ -563,8 +596,9 @@ class Application(QApplication):
 
     @pyqtSlot(mainwindow.MainWindow)
     def _on_new_window(self, window):
-        window.tabbed_browser.shutting_down.connect(functools.partial(
-            self.window_closing.emit, window))
+        window.tabbed_browser.shutting_down.connect(
+            functools.partial(self.window_closing.emit, window)
+        )
 
     @pyqtSlot(QObject)
     def on_focus_object_changed(self, obj):
