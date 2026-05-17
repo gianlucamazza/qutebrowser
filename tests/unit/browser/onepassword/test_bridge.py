@@ -220,3 +220,23 @@ def test_build_fill_field_js_contains_credentials():
     assert "s3cr3t" in js
     assert "autocomplete" in js
     assert "kind" in js
+
+
+def test_js_escape_handles_all_line_terminators():
+    from qutebrowser.browser.onepassword.bridge import _js_escape, _build_fill_js
+
+    # These Unicode characters break JS string literals if unescaped
+    evil = "a\nb\rc d e"
+    escaped = _js_escape(evil)
+    assert "\n" not in escaped
+    assert "\r" not in escaped
+    assert " " not in escaped
+    assert " " not in escaped
+    assert "\\n" in escaped
+    assert "\\r" in escaped
+    assert "\\u2028" in escaped
+    assert "\\u2029" in escaped
+    # Verify the built JS is syntactically safe (no raw line terminators)
+    js = _build_fill_js(evil, evil)
+    assert " " not in js
+    assert " " not in js

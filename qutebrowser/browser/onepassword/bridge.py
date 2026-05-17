@@ -230,7 +230,14 @@ class OnePasswordBridge(QObject):
 
 
 def _js_escape(s: str) -> str:
-    return s.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+    return (
+        s.replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
+    )
 
 
 def _build_fill_js(username: str, password: str) -> str:
