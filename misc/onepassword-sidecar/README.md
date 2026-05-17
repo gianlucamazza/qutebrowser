@@ -41,15 +41,23 @@ forks BrowserSupport as a child and proxies stdin/stdout via `poll()`.
 Build and install it with:
 
 ```bash
+# Compile
 make -C launcher
-sudo install -Dm755 -o root -g root \
-    launcher/qute-1pass-sidecar /usr/local/bin/qute-1pass-sidecar
+
+# Install root-owned to /usr/local/bin (required for native backend)
+make -C launcher install-system
+# Then register as a trusted browser (one-time, requires root):
 echo qute-1pass-sidecar | sudo tee -a /etc/1password/custom_allowed_browsers
 ```
 
-If the launcher is not installed, starting the sidecar with
-`--backend native` will automatically fall back to `op-cli` and
-report the reason via `ping()` (visible via `:onepassword status` in
+`make install` (without `-system`) installs to `~/.local/bin` for
+development/testing, but that path does **not** satisfy 1Password's
+root-owned binary requirement, so the native backend will still degrade
+to `op-cli` with a clear error message.
+
+If the launcher is not installed at all, starting the sidecar with
+`--backend native` automatically falls back to `op-cli` and reports
+the reason via `ping()` (visible via `:onepassword status` in
 qutebrowser).
 
 ## Run
