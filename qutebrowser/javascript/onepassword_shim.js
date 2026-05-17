@@ -56,6 +56,14 @@
         }
         new QWebChannel(qt.webChannelTransport, function(ch) {
             _op = ch.objects.onepassword;
+            // Wire response signals exactly once here, not inside _setupPasskeyShim,
+            // so that repeated capability re-evaluations don't accumulate duplicate
+            // handlers (each reconnect would double the callback count).
+            _op.passkey_result.connect(_onPasskeyResult);
+            _op.passkey_error.connect(_onPasskeyError);
+            _op.capabilities_changed.connect(function() {
+                _setupPasskeyShim();
+            });
             _setupPasskeyShim();
         });
     }
@@ -125,11 +133,6 @@
                 console.debug("[1Password] passkey shim disabled (capability missing)");
                 return;
             }
-
-            // Connect signal handlers once
-            _op.passkey_result.connect(_onPasskeyResult);
-            _op.passkey_error.connect(_onPasskeyError);
-
             if (hasGet) {
                 _patchCredentialsGet();
             }
@@ -137,11 +140,33 @@
                 _patchCredentialsCreate();
             }
         });
+    }
 
-        // Re-evaluate if the backend reconnects with different capabilities
-        _op.capabilities_changed.connect(function() {
-            _setupPasskeyShim();
-        });
+    // Timeout after which a pending passkey request is rejected automatically.
+    // Prevents the page Promise from hanging forever if the sidecar dies.
+    const _PASSKEY_TIMEOUT_MS = 60000;
+
+    function _cancelPending(reqId) {
+        const p = _pending[reqId];
+        if (!p) {
+            return;
+        }
+        clearTimeout(p.timeoutId);
+        delete _pending[reqId];
+    }
+
+    function _makePending(reqId, resolve, reject) {
+        const timeoutId = setTimeout(function() {
+            if (!_pending[reqId]) {
+                return;
+            }
+            delete _pending[reqId];
+            console.warn("[1Password] passkey request timed out:", reqId);
+            reject(new DOMException(
+                "1Password passkey request timed out", "NotAllowedError",
+            ));
+        }, _PASSKEY_TIMEOUT_MS);
+        _pending[reqId] = {"resolve": resolve, "reject": reject, "timeoutId": timeoutId};
     }
 
     function _onPasskeyResult(reqId, jsonBlob) {
@@ -149,7 +174,7 @@
         if (!p) {
             return;
         }
-        delete _pending[reqId];
+        _cancelPending(reqId);
         let blob;
         try {
             blob = JSON.parse(jsonBlob);
@@ -167,7 +192,7 @@
         if (!p) {
             return;
         }
-        delete _pending[reqId];
+        _cancelPending(reqId);
         p.reject(new DOMException(msg, "NotAllowedError"));
     }
 
@@ -202,10 +227,11 @@
                                 function(c) { return _bufToB64url(c.id); },
                             ),
                         };
-                        _pending[reqId] = {
-                            "resolve": function(blob) { resolve(_mkAssertionCred(blob)); },
-                            "reject": reject,
-                        };
+                        _makePending(
+                            reqId,
+                            function(blob) { resolve(_mkAssertionCred(blob)); },
+                            reject,
+                        );
                         _op.passkey_get(reqId, JSON.stringify(params));
                     });
                 },
@@ -252,12 +278,11 @@
                                 function(p) { return {"type": p.type, "alg": p.alg}; },
                             ),
                         };
-                        _pending[reqId] = {
-                            "resolve": function(blob) {
-                                resolve(_mkAttestationCred(blob));
-                            },
-                            "reject": reject,
-                        };
+                        _makePending(
+                            reqId,
+                            function(blob) { resolve(_mkAttestationCred(blob)); },
+                            reject,
+                        );
                         _op.passkey_create(reqId, JSON.stringify(params));
                     });
                 },
