@@ -14,7 +14,7 @@
 ```
 browser extension <─── Chrome Native Messaging (stdin/stdout) ───> 1Password-BrowserSupport
                         4-byte LE length prefix + JSON body                 │
-                                                                             │  UDS
+                                                                             │  UDS (internal)
                                                            /run/user/1000/1Password-BrowserSupport.sock
                                                                              │
                                                                     1Password.app (main)
@@ -23,15 +23,17 @@ browser extension <─── Chrome Native Messaging (stdin/stdout) ───> 1
 1Password.app (main) <── UDS /home/<user>/.1password/agent.sock ───── ssh-agent clients
 ```
 
-### What the NativeProtocolBackend actually does
+### How the NativeProtocolBackend works
 
-1. **Spawns** `/opt/1Password/1Password-BrowserSupport` as a subprocess, passing
-   the native messaging manifest path + extension ID on argv (Chrome NM convention).
-2. **Communicates** via stdin/stdout using Chrome Native Messaging framing (see below).
-3. **LD_PRELOAD shim** spoofs the parent-process identity check that BrowserSupport
-   performs on startup (see "Browser Verification" section below).
-4. BrowserSupport then opens its own UDS to the main 1Password app and proxies
-   all requests through it.
+1. **Spawns** the `qute-1pass-sidecar` bridge launcher ELF (root-owned, installed
+   at `/usr/local/bin/`), passing BrowserSupport path + manifest + extension ID
+   via environment variables.
+2. The launcher **forks** BrowserSupport as a child and stays alive as its parent
+   process (so BrowserSupport sees `qute-1pass-sidecar` as its ppid via `/proc`).
+3. The launcher acts as a **bidirectional stdin/stdout proxy** between our process
+   and BrowserSupport, using `poll()` for non-blocking I/O.
+4. We communicate via Chrome Native Messaging framing on the launcher's stdin/stdout.
+5. BrowserSupport internally opens its own UDS to the 1Password desktop app.
 
 ---
 
@@ -47,23 +49,22 @@ Spec: <https://developer.chrome.com/docs/extensions/develop/concepts/native-mess
 └─────────────────────────────────────────┘
 ```
 
-Both directions (host→extension, extension→host) use the same framing on
-stdin/stdout respectively. No separator byte between messages.
+Both directions use the same framing. No separator byte between messages.
 
-Python read/write helpers:
+Python helpers:
 
 ```python
-import json, struct, subprocess
+import json, struct
 
-def nm_send(proc: subprocess.Popen, msg: dict) -> None:
-    payload = json.dumps(msg).encode("utf-8")
+def nm_send(proc, msg):
+    payload = json.dumps(msg, separators=(",", ":")).encode("utf-8")
     proc.stdin.write(struct.pack("<I", len(payload)) + payload)
     proc.stdin.flush()
 
-def nm_recv(proc: subprocess.Popen) -> dict:
+def nm_recv(proc):
     header = proc.stdout.read(4)
     if len(header) < 4:
-        raise EOFError("BrowserSupport exited")
+        raise EOFError
     (length,) = struct.unpack("<I", header)
     return json.loads(proc.stdout.read(length))
 ```
@@ -72,12 +73,11 @@ def nm_recv(proc: subprocess.Popen) -> dict:
 
 ## BrowserSupport Invocation
 
-From `/home/<user>/.mozilla/native-messaging-hosts/com.1password.1password.json`:
+From `~/.mozilla/native-messaging-hosts/com.1password.1password.json`:
 
 ```json
 {
   "name": "com.1password.1password",
-  "description": "1Password BrowserSupport",
   "path": "/opt/1Password/1Password-BrowserSupport",
   "type": "stdio",
   "allowed_extensions": [
@@ -88,239 +88,186 @@ From `/home/<user>/.mozilla/native-messaging-hosts/com.1password.1password.json`
 }
 ```
 
-Invocation convention (from observing the live process via `pgrep -af 1Password`):
+Invocation: `1Password-BrowserSupport <manifest_path> <extension_id>`
 
-```
-/opt/1Password/1Password-BrowserSupport <manifest_path> <extension_id>
-```
-
-We use extension ID `{d634138d-c276-4fc8-924b-40a0ea21d284}` (Firefox extension).
-The same manifest JSON is installed for all supported browsers; the extension ID
-is passed at runtime for BrowserSupport's logging only — the actual trust check
-is browser-binary-based (see below), not extension-ID-based.
+Extension ID `{d634138d-c276-4fc8-924b-40a0ea21d284}` is the Firefox extension.
 
 ---
 
 ## Browser Verification
 
-**Source path in binary** (Rust, not stripped):
-`native-messaging/op-browser-support/src/browser_verification/linux.rs`
+BrowserSupport verifies its caller by reading `/proc/<ppid>/exe` and checking
+the basename against a whitelist that includes `/etc/1password/custom_allowed_browsers`
+(root-owned, one basename per line).
 
-BrowserSupport walks the **process ancestry** of its caller and checks whether any
-ancestor is a known trusted browser binary. Error variants found in the binary:
+**Key discovery**: Binary permission check — the caller binary must be root-owned
+(in a system directory). A user-space binary at `~/.local/bin/` fails with
+"binary permission verification failed".
 
-- `BrowserVerificationFailed` — no trusted ancestor found.
-- `BrowserSignatureMaxDepthExceeded` — walked too many levels without finding one.
-- `Signature mismatch: got …` — found a /proc/<pid>/exe but hash didn't match.
-- `BrowserHelperNotRegistered` — extension not registered in the manifest.
-
-**Browser state enum**: `Known | Untrusted | Unknown`
-
-The check most likely:
-1. Reads `/proc/<ppid>/exe` (or walks further ancestors).
-2. Hashes the target binary and compares against a hardcoded whitelist.
-
-### D.0.1 — Capture procedure (run to confirm before writing shim)
-
-With the official 1Password Firefox extension active and 1Password.app running,
-trigger an autofill or login prompt, then capture:
+**Solution used**: Install the launcher ELF to `/usr/local/bin/qute-1pass-sidecar`
+(root:root, 0755), register it in `/etc/1password/custom_allowed_browsers`.
 
 ```bash
-pid=$(pgrep -f "1Password-BrowserSupport.*mozilla")
-strace -f -p "$pid" \
-  -e trace=openat,read,readlink,readlinkat,statx,newfstatat \
-  -s 256 -o /tmp/op-bs-verify.strace
-# trigger: click "Fill password" in 1Password extension in Firefox
-# then Ctrl-C strace
-grep -E '/proc/[0-9]+/(exe|comm|cmdline|maps|status|attr)' /tmp/op-bs-verify.strace
+# Build and install (requires root)
+make -C misc/onepassword-sidecar/launcher install   # installs to /usr/local/bin/
+echo "qute-1pass-sidecar" | sudo tee -a /etc/1password/custom_allowed_browsers
 ```
 
-Expected output: list of exact `/proc/<ppid>/...` paths BrowserSupport probes.
-This is the ground truth for designing the LD_PRELOAD shim.
+**Why not LD_PRELOAD?** `/opt/1Password/1Password-BrowserSupport` is setgid
+(`-rwxr-sr-x root onepassword`). The dynamic linker ignores `LD_PRELOAD` for
+setgid/setuid binaries. A non-setgid shadow copy aborts with
+"process detected it was running without libc's security". The
+`custom_allowed_browsers` + root-owned launcher is the correct approach.
 
-### Shim strategy: LD_PRELOAD
+The `shim/` directory contains an abandoned LD_PRELOAD shim kept for reference.
 
-See `../shim/qute_browser_spoof.c`. Intercepts the syscalls identified above,
-returning a trusted browser path (e.g. `/usr/bin/firefox`) for any `/proc/<ppid>/...`
-probe where `ppid` is BrowserSupport's actual parent (our sidecar process).
+---
 
-The shim is loaded exclusively into the BrowserSupport subprocess via:
+## NM Message Format (CONFIRMED by live strace + extension RE)
+
+**Source**: `strace -p <BrowserSupport_pid> -e trace=read,write -s 4096`
+while the official Firefox extension is active, plus decompilation of
+`/tmp/1p_ext/background/background.js` (extracted from the XPI).
+
+### Request (browser → BrowserSupport)
+
+```json
+{
+  "callbackId": <uint32>,
+  "invocation": {
+    "type": "<InvocationTypeName>",
+    "content": { ... }
+  }
+}
+```
+
+For invocations with no parameters (e.g. `NmLockState`), omit `"content"`.
+
+### Response (BrowserSupport → browser)
+
+```json
+{
+  "type": "Success" | "Failure" | "BrowserSupport" | "NotificationModern" | "Notification",
+  "content": {
+    "callbackId": <uint32>,
+    "response": {
+      "type": "<InvocationTypeName>",
+      "content": { ... }
+    },
+    "browser_state": {"type": "Known" | "Untrusted" | "Unknown"}
+  }
+}
+```
+
+- `"Success"`: `content.response` is the typed response object.
+- `"BrowserSupport"`: `content.response` is a string (e.g. `"UnknownInvocation"`).
+- `"Failure"`: similar to `"BrowserSupport"`.
+- `"NotificationModern"`: unsolicited push from desktop app (no `callbackId` match).
+
+**Important**: The `{"t": ..., "c": ...}` adjacently-tagged format found in the
+binary strings is an **internal** format used between BrowserSupport and the
+1Password desktop app over UDS — NOT the NM protocol we speak.
+
+---
+
+## Verified Invocation Types (from official extension background.js)
+
+These are the types that BrowserSupport actually accepts:
+
+| Type | content fields | Notes |
+|------|---------------|-------|
+| `NmLockState` | _(none)_ | Returns `{"lockState": "Unlocked"\|"Locked"}` |
+| `NmRequestAccounts` | `version`, `userRequested`, `supportsDelegation` | Returns `{"accounts": [...]}` |
+| `NmOfflineStatus` | _(none)_ | Returns `{"authFailed": bool}` |
+| `NmShowUnlock` | _(none)_ | Triggers 1P unlock UI |
+| `NmShowUnlockAccount` | `accountUuid` | Unlock specific account |
+| `NmCollectedPageDetails` | `collectedPageDetails` | Push page analysis to desktop |
+| `NmAcknowledgeFillItem` | `success` | Confirm fill complete |
+| `NmCreateItem` | item fields | Create vault item |
+| `NmViewItem` | `itemUuid`, `accountUuid` | Open item in 1P UI |
+| `NmEditItem` | item fields | Edit existing item |
+| `NmRequestDelegatedSession` | session fields | Delegated session |
+| `NmShouldPromptToAddAccount` | account fields | Query add-account prompt |
+| `NmPromptToAddAccount` | account fields | Show add-account prompt |
+| `NmShowDesktopSettingsPage` | page fields | Open 1P settings |
+| `NmSendSecureRemoteAutofillCredentialBundle` | encrypted bundle | Remote autofill |
+| `NmRequestDesktopApplicationDeviceInfo` | _(none)_ | Get device info |
+| `NmRequestUpgradeOffline` | _(none)_ | Offline upgrade |
+
+**Types in binary strings but NOT in extension**: `NmRequestAuthorization`,
+`NmNativeAutofillRequest`, `NmNativeAutofillResponse` — these are internal
+BrowserSupport ↔ desktop app protocol, not the NM protocol.
+
+---
+
+## Credential Architecture (critical discovery)
+
+**Credentials are NOT transmitted over the NM protocol.**
+
+The 1Password browser extension maintains a local encrypted vault (synchronized
+from the desktop app). Credentials are decrypted locally inside the extension's
+WebAssembly crypto engine. The NM protocol is used only for:
+
+- **Coordination**: which item to fill (desktop sends `FillItem` notification
+  with `itemUuid`; extension decrypts that item from its local vault).
+- **Account management**: lock state, account list, unlock triggers.
+- **UI operations**: open item, show settings, show unlock dialog.
+
+Consequence: `NativeProtocolBackend.find_items()`, `get_item()`, and `save_login()`
+are **delegated to an embedded `OpCliBackend`**. The `op` CLI accesses the vault
+directly (via `@1PASSWORD_SDK_INTERGATIONS` socket to the desktop app).
+
+Passkey signing is also performed inside the extension's WASM — not exposed via
+NM. `passkey_get`/`passkey_create` are currently not implemented.
+
+---
+
+## Live Test Results
+
+Confirmed working (2026-05-17, 1Password 8.x on Linux):
 
 ```python
-env["LD_PRELOAD"] = str(shim_path)
-proc = subprocess.Popen([bs_path, manifest, ext_id], env=env, ...)
+# NmLockState → {"lockState": "Unlocked"}
+# NmRequestAccounts → {"accounts": [{"type": "Unlocked", "content": {...}}]}
+# NmOfflineStatus → {"authFailed": False}
+# All with browser_state={"type": "Known"}
 ```
 
-No other process sees the override.
+Verification log from BrowserSupport:
+```
+Browser "/usr/local/bin/qute-1pass-sidecar" verified successfully
+Connected to the desktop app
+```
 
 ---
 
-## NM RPC Type Catalogue
+## Confirmed Sockets (via `ss -xlp`)
 
-Extracted via `grep -aoE 'Nm[A-Z][A-Za-z]+' /opt/1Password/1Password-BrowserSupport | sort -u`.
+| Socket | Purpose |
+|--------|---------|
+| `/run/user/1000/1Password-BrowserSupport.sock` | BrowserSupport ↔ desktop (internal) |
+| `/run/user/1000/s.sock` | Desktop main RPC |
+| `@1PASSWORD_SDK_INTERGATIONS` | op CLI / SDK integrations |
+| `~/.1password/agent.sock` | SSH agent |
 
-### Invocations (browser → BrowserSupport)
-
-| Type | Purpose |
-|------|---------|
-| `NmRequestAuthorization` | Initial auth handshake |
-| `NmDropAuthorization` | Tear down session |
-| `NmRequestAccounts` | List accounts |
-| `NmRequestDelegatedSession` | Delegated session for CLI integration |
-| `NmRequestDSecretProxy` | D-Bus Secret Service proxy |
-| `NmCollectedPageDetails` | Send form page context for fill |
-| `NmAcknowledgeFillItem` | Confirm item was filled |
-| `NmCreateItem` | Create vault item |
-| `NmEditItem` | Edit existing item |
-| `NmViewItem` | Open item in 1P UI |
-| `NmShowUnlock` | Show unlock dialog |
-| `NmShowUnlockAccount` | Show unlock for specific account |
-| `NmShowDesktopSettingsPage` | Open settings |
-| `NmPromptToAddAccount` | Prompt to add 1P account |
-| `NmShowWarning` | Show warning dialog |
-| `NmPerformUserVerification` | Biometric / UV prompt |
-| `NmAcknowledgeCheckExtensionPinStatus` | Extension PIN status ack |
-| `NmAcknowledgeCheckExtensionFirstSsoFlow` | SSO first-run ack |
-| `NmRequestUpgradeOffline` | Offline upgrade request |
-| `NmAuthorizePartnerBrowser` | Partner browser authorization |
-| `NmNativeAutofillRequest` | Autofill + passkey (see subtypes) |
-| `NmRequestMacNativeAutofillStatus` | macOS native autofill status |
-| `NmShouldPromptToAddAccount` | Query whether to show add-account |
-
-### Responses (BrowserSupport → browser)
-
-| Type | Purpose |
-|------|---------|
-| `NmAuthorizationResponse` | Auth handshake result |
-| `NmRequestAccountsResponse` | Account list |
-| `NmRequestDelegatedSessionResponse` / `Error` | Delegated session result |
-| `NmRequestDSecretProxyResponse` | D-Bus proxy result |
-| `NmLockStateResponse` | Lock state |
-| `NmOfflineStatusResponse` | Offline status |
-| `NmSendSecureRemoteAutofillCredentialBundleRequest/Response` | Secure credential bundle |
-| `NmDesktopApplicationDeviceInfoResponse` | Device info |
-| `NmMacNativeAutofillStatusResponse` | macOS autofill status |
-| `NmShouldPromptToAddAccountResponse` | Add-account prompt result |
-| `NmNativeAutofillResponse` | Autofill + passkey result |
-| `NmUserVerificationRequest` | UV prompt parameters |
-
-### Notifications (BrowserSupport → browser, unsolicited)
-
-| Type | Purpose |
-|------|---------|
-| `NmNotification.AppQuit` | 1Password.app exited |
-| `NmNotification.AutofillItemUpdated` | Item changed in vault |
-| `NmNotification.BrowserVerificationFailed` | Browser identity check failed |
-| `NmNotification.AccountRemoved` | Account removed from vault |
-| `NmNotification.FillShortcutActivated` | Global fill shortcut pressed |
-| `NmNotification.CollectActivePageDetails` | BrowserSupport requests page context |
-| `NmNotification.BrowserHelperNotRegistered` | Extension not in manifest |
-| `NmNotification.LostConnectionToApp` | Disconnected from 1Password.app |
-| `NmNotification.ExtensionSupportDisabled` | Extension support turned off |
-| `NmNotification.SsoMigrationStarted/Completed` | SSO migration events |
-
-### NmNativeAutofillRequest subtypes (passkey-relevant)
-
-From the concatenated string blob in the binary:
-
-| Subtype | Purpose |
-|---------|---------|
-| `passwordOrPasskey` | Fill either password or passkey (user chooses) |
-| `oneTimeCode` | Fill TOTP |
-| `inlineUnlock` | Inline biometric unlock |
-| `itemCredentials` | Return full item credentials |
-| `getFeatureFlagStatus` | Feature flag query |
-| `getResource` | Generic resource fetch |
-| `passkeyRegister` | **WebAuthn `create()` — register new passkey** |
-| `passkeySave` | Save passkey to existing item |
-| `passkeyAuthenticate` | **WebAuthn `get()` — authenticate with passkey** |
-| `generatedPassword` | Return a generated password |
-| `usernameSuggestions` | Return username suggestions |
-
-### Encrypted channel fields
-
-Found in blob adjacent to `NmSendSecureRemoteAutofillCredentialBundleResponse`:
-`psk`, `localKeypair`, `remotePubKey` — indicates a Noise-protocol or X25519 ECDH
-secure channel for credential transmission. The `NmSendSecureRemoteAutofill...`
-methods encrypt the credential bundle before returning it to the extension.
+We interact only with BrowserSupport via stdin/stdout (Chrome NM). The UDS
+sockets above are internal and not directly useful to us.
 
 ---
 
-## SDK Path (not usable for passkeys)
+## Future Work: Passkey via NM
 
-`libop_sdk_ipc_client.so` connects to the abstract socket `@1PASSWORD_SDK_INTERGATIONS`.
-This is used by `op` CLI v2. Static analysis shows **no passkey/WebAuthn symbols**
-in the SDK lib — signing is not exposed via the SDK path. SDK is only useful for
-fill/save (already handled by `OpCliBackend`).
+`NmPerformUserVerification` (in binary strings) may be relevant for passkey
+user-verification step. Full passkey flow requires:
 
----
+1. Understanding how the extension intercepts `navigator.credentials.get()` /
+   `navigator.credentials.create()` (via content script, not NM).
+2. Finding whether there is a direct NM path for passkey signing requests, or
+   if passkeys are always handled by the extension's WASM crypto engine locally.
 
-## Passkey Schema Mapping (preliminary, to be confirmed by D.0.1 capture)
+The `NmNativeAutofillRequest` type (internal BrowserSupport ↔ desktop protocol)
+handles passkey subtypes (`passkeyAuthenticate`, `passkeyRegister`) but is NOT
+accessible from the NM layer we speak.
 
-### passkey_get
-
-JSON-RPC sidecar request → NM envelope:
-
-```json
-{
-  "type": "NmNativeAutofillRequest",
-  "payload": {
-    "type": "passkeyAuthenticate",
-    "origin": "https://<rp_id>",
-    "rpId": "<rp_id>",
-    "challenge": "<base64url>",
-    "allowCredentials": [{"type": "public-key", "id": "<base64url>"}]
-  }
-}
-```
-
-Expected `NmNativeAutofillResponse` payload (field names to be confirmed):
-
-```json
-{
-  "type": "passkeyAuthenticate",
-  "credentialId": "<base64url>",
-  "authenticatorData": "<base64url>",
-  "signature": "<base64url>",
-  "userHandle": "<base64url | null>"
-}
-```
-
-Mapped to sidecar JSON-RPC response: `{authenticator_data_b64, signature_b64, user_handle_b64, credential_id_b64}`.
-
-### passkey_create
-
-```json
-{
-  "type": "NmNativeAutofillRequest",
-  "payload": {
-    "type": "passkeyRegister",
-    "origin": "https://<rp_id>",
-    "rpId": "<rp_id>",
-    "rpName": "<rp name>",
-    "userId": "<base64url>",
-    "userName": "<username>",
-    "challenge": "<base64url>",
-    "pubKeyCredParams": [{"type": "public-key", "alg": -7}]
-  }
-}
-```
-
-Whether BrowserSupport accepts `passkeyRegister` from a non-blessed caller
-(post-shim) is unknown until D.0.1 capture + live testing.
-
----
-
-## Confirmed Sockets (via `ss -xlp` with 1Password.app running)
-
-| Socket | Owner | Purpose |
-|--------|-------|---------|
-| `/run/user/1000/1Password-BrowserSupport.sock` | 1Password BrowserSupport | Internal BrowserSupport ↔ main app IPC |
-| `/run/user/1000/s.sock` | 1Password main app | Main RPC socket |
-| `@1PASSWORD_SDK_INTERGATIONS` (abstract) | 1Password main app | SDK / op CLI integrations |
-| `/home/<user>/.1password/agent.sock` | 1Password main app | SSH agent |
-| `@/tmp/1Password-<uid>/...` (abstract) | 1Password | Crash handler / IPC |
-
-The socket that matters for the NativeProtocolBackend is **NOT** any of these
-directly — BrowserSupport opens its connection to the main app internally after
-it starts. We only interact with BrowserSupport via stdin/stdout.
+This remains an open research item. Until resolved, `passkey_get`/`passkey_create`
+raise `NativeProtocolError` and are excluded from capabilities.

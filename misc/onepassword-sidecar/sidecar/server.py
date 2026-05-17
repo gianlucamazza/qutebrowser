@@ -36,10 +36,13 @@ class SidecarServer:
         self,
         backend: OnePasswordBackend | None = None,
         socket_path: str = "",
+        degraded_from: tuple[str, str] | None = None,
     ) -> None:
         self._backend: OnePasswordBackend = backend or OpCliBackend()
         self._sock: socket.socket | None = None
         self._path = pathlib.Path(socket_path) if socket_path else _socket_path()
+        # (requested_backend_name, error_reason) when auto-degraded to op-cli
+        self._degraded_from: tuple[str, str] | None = degraded_from
 
     # ------------------------------------------------------------------
     # lifecycle
@@ -108,11 +111,16 @@ class SidecarServer:
     def _call(self, method: str, params: dict[str, Any]) -> Any:
         b = self._backend
         if method == "ping":
-            return {
+            result: dict[str, Any] = {
                 "backend": type(b).__name__,
                 "capabilities": sorted(b.capabilities()),
                 "locked": False,
+                "degraded": self._degraded_from is not None,
             }
+            if self._degraded_from:
+                result["degraded_from"] = self._degraded_from[0]
+                result["degraded_reason"] = self._degraded_from[1]
+            return result
         if method == "find_items":
             return b.find_items(params["url"])
         if method == "get_item":
@@ -165,18 +173,29 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    degraded_from: tuple[str, str] | None = None
+
     if args.backend == "native":
         try:
-            from sidecar.backends.native_protocol import NativeProtocolBackend
+            from sidecar.backends.native_protocol import (
+                BackendUnavailable,
+                BrowserVerificationFailed,
+                NativeProtocolBackend,
+            )
 
             backend: OnePasswordBackend = NativeProtocolBackend()
-        except ImportError:
-            log.warning("native_protocol backend not available, falling back to op-cli")
+            log.info("NativeProtocolBackend started successfully")
+        except Exception as e:
+            reason = str(e)
+            log.warning("native backend unavailable (%s); degrading to op-cli", reason)
             backend = OpCliBackend()
+            degraded_from = ("native", reason)
     else:
         backend = OpCliBackend()
 
-    server = SidecarServer(backend=backend, socket_path=args.socket_path)
+    server = SidecarServer(
+        backend=backend, socket_path=args.socket_path, degraded_from=degraded_from
+    )
     signal.signal(signal.SIGTERM, lambda *_: server.stop())
     signal.signal(signal.SIGINT, lambda *_: server.stop())
     server.start()
