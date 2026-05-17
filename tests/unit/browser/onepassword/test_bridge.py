@@ -116,3 +116,73 @@ def test_passkey_create_forwards_to_client(bridge, monkeypatch):
 
 def test_is_connected_delegates_to_client(bridge):
     assert bridge.is_connected() is True
+
+
+# ---------------------------------------------------------------------------
+# get_credentials
+# ---------------------------------------------------------------------------
+
+
+def test_get_credentials_calls_find_then_get(bridge, monkeypatch):
+    """get_credentials chains find_items → get_item and delivers the item."""
+    find_result = [{"id": "abc", "title": "GitHub", "url_match_score": 1}]
+    get_result = {"username": "user", "password": "s3cr3t", "totp": None}
+    calls = []
+
+    def fake_call(method, params, cb):
+        calls.append((method, params))
+        if method == "find_items":
+            cb({"result": find_result})
+        elif method == "get_item":
+            cb({"result": get_result})
+
+    bridge._ping_done = True
+    monkeypatch.setattr(bridge._client, "call", fake_call)
+
+    received = []
+    bridge.get_credentials(
+        "https://github.com", lambda item, err: received.append((item, err))
+    )
+
+    assert len(received) == 1
+    item, err = received[0]
+    assert err is None
+    assert item["username"] == "user"
+    assert item["password"] == "s3cr3t"
+    assert calls[0][0] == "find_items"
+    assert calls[1][0] == "get_item"
+    assert calls[1][1] == {"id": "abc"}
+
+
+def test_get_credentials_no_items_returns_error(bridge, monkeypatch):
+    bridge._ping_done = True
+    monkeypatch.setattr(
+        bridge._client,
+        "call",
+        lambda method, params, cb: (
+            cb({"result": []}) if method == "find_items" else None
+        ),
+    )
+
+    received = []
+    bridge.get_credentials(
+        "https://example.com", lambda item, err: received.append((item, err))
+    )
+
+    assert received[0] == (None, "no items found for https://example.com")
+
+
+def test_get_credentials_find_error_propagates(bridge, monkeypatch):
+    bridge._ping_done = True
+    monkeypatch.setattr(
+        bridge._client,
+        "call",
+        lambda method, params, cb: cb({"error": {"message": "vault locked"}}),
+    )
+
+    received = []
+    bridge.get_credentials(
+        "https://example.com", lambda item, err: received.append((item, err))
+    )
+
+    assert received[0] == (None, "vault locked")

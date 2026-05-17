@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from qutebrowser.qt.core import QObject, pyqtSignal, pyqtSlot
 from qutebrowser.browser.onepassword.client import OnePasswordClient
-from qutebrowser.utils import log, message, utils
+from qutebrowser.utils import log, message
 
 
 class OnePasswordBridge(QObject):
@@ -60,11 +60,48 @@ class OnePasswordBridge(QObject):
     def fill(self, tab: Any, url: str, otp: bool = False) -> None:
         """Find credentials for url and fill the active tab's form."""
         self.ensure_connected()
-        self._client.call(
-            "find_items",
-            {"url": url},
-            lambda resp: self._on_find_items(resp, tab, url, otp),
+        self.get_credentials(
+            url,
+            lambda item, err: self._on_credentials_for_fill(item, err, tab, otp),
         )
+
+    def get_credentials(
+        self,
+        url: str,
+        callback: Any,
+        *,
+        hint_alternatives: bool = True,
+    ) -> None:
+        """find_items + get_item pipeline; callback(item_dict | None, error_msg | None).
+
+        If *hint_alternatives* is True and more than one item matches, a
+        :message.info hint is shown before proceeding with the best match.
+        """
+        self.ensure_connected()
+
+        def _on_find(resp: dict[str, Any]) -> None:
+            if "error" in resp:
+                callback(None, resp["error"]["message"])
+                return
+            items: list[dict[str, Any]] = resp.get("result", [])
+            if not items:
+                callback(None, f"no items found for {url}")
+                return
+            if hint_alternatives and len(items) > 1:
+                message.info(
+                    f"1Password: {len(items)} items match — using "
+                    f"'{items[0].get('title', items[0]['id'])}'; "
+                    ":onepassword-pick to choose differently"
+                )
+            self._client.call("get_item", {"id": items[0]["id"]}, _on_get)
+
+        def _on_get(resp: dict[str, Any]) -> None:
+            if "error" in resp:
+                callback(None, resp["error"]["message"])
+                return
+            callback(resp.get("result", {}), None)
+
+        self._client.call("find_items", {"url": url}, _on_find)
 
     def save(self, url: str, username: str, password: str) -> None:
         """Save a login to 1Password."""
@@ -104,30 +141,13 @@ class OnePasswordBridge(QObject):
         log.misc.debug(f"1Password: backend capabilities: {sorted(self._capabilities)}")
         self.capabilities_changed.emit()
 
-    def _on_find_items(
-        self, resp: dict[str, Any], tab: Any, url: str, otp: bool
+    def _on_credentials_for_fill(
+        self, item: dict[str, Any] | None, err: str | None, tab: Any, otp: bool
     ) -> None:
-        if "error" in resp:
-            message.error(f"1Password: {resp['error']['message']}")
+        if err:
+            message.error(f"1Password: {err}")
             return
-        items: list[dict[str, Any]] = resp.get("result", [])
-        if not items:
-            message.error(f"1Password: no items found for {url}")
-            return
-        # Use the highest-scoring match.
-        # Multi-match selection is Phase B (autosave/prompt).
-        best = items[0]
-        self._client.call(
-            "get_item",
-            {"id": best["id"]},
-            lambda r: self._on_got_item(r, tab, otp),
-        )
-
-    def _on_got_item(self, resp: dict[str, Any], tab: Any, otp: bool) -> None:
-        if "error" in resp:
-            message.error(f"1Password: {resp['error']['message']}")
-            return
-        item = resp.get("result", {})
+        assert item is not None
         username = item.get("username", "")
         password = item.get("password", "")
         totp: Optional[str] = item.get("totp")
@@ -135,8 +155,9 @@ class OnePasswordBridge(QObject):
         tab.run_js_async(_build_fill_js(username, password))
 
         if otp and totp:
-            utils.set_clipboard(totp)
-            message.info("1Password: TOTP copied to clipboard.")
+            from qutebrowser.browser.onepassword.clipboard_redact import copy_secret
+
+            copy_secret(totp, "TOTP")
         elif otp and not totp:
             message.info("1Password: no TOTP field found for this item.")
 
