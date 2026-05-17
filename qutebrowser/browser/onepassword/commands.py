@@ -146,3 +146,65 @@ def onepassword_status() -> None:
         )
 
     b.ping(_show)
+
+
+@cmdutils.register()
+@cmdutils.argument("tab", value=cmdutils.Value.cur_tab)
+def onepassword_copy_username(tab: apitypes.Tab) -> None:
+    """Copy the username for the current page from 1Password."""
+    if not _check_enabled():
+        return
+    from qutebrowser.browser.onepassword.clipboard_redact import copy_plain  # noqa: PLC0415
+
+    def _cb(item: dict | None, err: str | None) -> None:
+        if err:
+            message.error(f"1Password: {err}")
+            return
+        assert item is not None
+        copy_plain(item.get("username", ""), "username")
+
+    _bridge().get_credentials(tab.url().toString(), _cb)
+
+
+@cmdutils.register()
+@cmdutils.argument("tab", value=cmdutils.Value.cur_tab)
+def onepassword_copy_password(tab: apitypes.Tab) -> None:
+    """Copy the password for the current page from 1Password (auto-clears in 30s)."""
+    if not _check_enabled():
+        return
+    from qutebrowser.browser.onepassword.clipboard_redact import copy_secret  # noqa: PLC0415
+
+    def _cb(item: dict | None, err: str | None) -> None:
+        if err:
+            message.error(f"1Password: {err}")
+            return
+        assert item is not None
+        copy_secret(item.get("password", ""), "password")
+
+    _bridge().get_credentials(tab.url().toString(), _cb)
+
+
+@cmdutils.register()
+@cmdutils.argument("tab", value=cmdutils.Value.cur_tab)
+def onepassword_copy_totp(tab: apitypes.Tab) -> None:
+    """Copy the TOTP code for the current page from 1Password (auto-clears in 30s).
+
+    Prefer this over ``onepassword-fill --otp`` when you need the code without
+    filling the form (e.g. for a second-factor prompt on a different step).
+    """
+    if not _check_enabled():
+        return
+    from qutebrowser.browser.onepassword.clipboard_redact import copy_secret  # noqa: PLC0415
+
+    def _cb(item: dict | None, err: str | None) -> None:
+        if err:
+            message.error(f"1Password: {err}")
+            return
+        assert item is not None
+        totp = item.get("totp")
+        if not totp:
+            message.error("1Password: no TOTP field found for this item.")
+            return
+        copy_secret(totp, "TOTP")
+
+    _bridge().get_credentials(tab.url().toString(), _cb)

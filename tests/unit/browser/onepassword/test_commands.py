@@ -149,3 +149,124 @@ def test_status_shows_degraded_reason(qapp, monkeypatch):
     assert len(infos) == 1
     assert "degraded from native" in infos[0]
     assert "launcher not found" in infos[0]
+
+
+# ---------------------------------------------------------------------------
+# copy commands — username / password / totp
+# ---------------------------------------------------------------------------
+
+
+def _make_credential_bridge(monkeypatch, item: dict, qapp):
+    """Patch objreg.get to return a bridge that yields *item* via get_credentials."""
+    from qutebrowser.utils import objreg
+
+    fake_bridge = type(
+        "FakeBridge",
+        (),
+        {
+            "get_credentials": lambda self, url, cb, **kw: cb(item, None),
+        },
+    )()
+    monkeypatch.setattr(objreg, "get", lambda key, default=None: fake_bridge)
+    return fake_bridge
+
+
+def test_copy_username_uses_copy_plain(qapp, config_stub, monkeypatch):
+    config_stub.set_obj("onepassword.enabled", True)
+    copied = []
+    monkeypatch.setattr(
+        "qutebrowser.browser.onepassword.clipboard_redact.copy_plain",
+        lambda v, label: copied.append((v, label)),
+    )
+    _make_credential_bridge(
+        monkeypatch, {"username": "user@x.com", "password": "pw", "totp": None}, qapp
+    )
+
+    from qutebrowser.browser.onepassword.commands import onepassword_copy_username
+
+    tab = type(
+        "T",
+        (),
+        {
+            "url": lambda self: type(
+                "U", (), {"toString": lambda self: "https://x.com"}
+            )()
+        },
+    )()
+    onepassword_copy_username(tab)
+    assert copied == [("user@x.com", "username")]
+
+
+def test_copy_password_uses_copy_secret(qapp, config_stub, monkeypatch):
+    config_stub.set_obj("onepassword.enabled", True)
+    copied = []
+    monkeypatch.setattr(
+        "qutebrowser.browser.onepassword.clipboard_redact.copy_secret",
+        lambda v, label, **kw: copied.append((v, label)),
+    )
+    _make_credential_bridge(
+        monkeypatch, {"username": "u", "password": "s3cr3t", "totp": None}, qapp
+    )
+
+    from qutebrowser.browser.onepassword.commands import onepassword_copy_password
+
+    tab = type(
+        "T",
+        (),
+        {
+            "url": lambda self: type(
+                "U", (), {"toString": lambda self: "https://x.com"}
+            )()
+        },
+    )()
+    onepassword_copy_password(tab)
+    assert copied == [("s3cr3t", "password")]
+
+
+def test_copy_totp_uses_copy_secret(qapp, config_stub, monkeypatch):
+    config_stub.set_obj("onepassword.enabled", True)
+    copied = []
+    monkeypatch.setattr(
+        "qutebrowser.browser.onepassword.clipboard_redact.copy_secret",
+        lambda v, label, **kw: copied.append((v, label)),
+    )
+    _make_credential_bridge(
+        monkeypatch, {"username": "u", "password": "pw", "totp": "123456"}, qapp
+    )
+
+    from qutebrowser.browser.onepassword.commands import onepassword_copy_totp
+
+    tab = type(
+        "T",
+        (),
+        {
+            "url": lambda self: type(
+                "U", (), {"toString": lambda self: "https://x.com"}
+            )()
+        },
+    )()
+    onepassword_copy_totp(tab)
+    assert copied == [("123456", "TOTP")]
+
+
+def test_copy_totp_missing_field_shows_error(qapp, config_stub, monkeypatch):
+    config_stub.set_obj("onepassword.enabled", True)
+    errors = []
+    monkeypatch.setattr("qutebrowser.utils.message.error", lambda s: errors.append(s))
+    _make_credential_bridge(
+        monkeypatch, {"username": "u", "password": "pw", "totp": None}, qapp
+    )
+
+    from qutebrowser.browser.onepassword.commands import onepassword_copy_totp
+
+    tab = type(
+        "T",
+        (),
+        {
+            "url": lambda self: type(
+                "U", (), {"toString": lambda self: "https://x.com"}
+            )()
+        },
+    )()
+    onepassword_copy_totp(tab)
+    assert any("no TOTP" in e for e in errors)
