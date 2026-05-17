@@ -5,16 +5,20 @@
 
 import shutil
 import subprocess
+from typing import TYPE_CHECKING
 
 from qutebrowser.api import apitypes, cmdutils
 from qutebrowser.completion.models import onepassword_model
 from qutebrowser.utils import message, objreg, usertypes
 
+if TYPE_CHECKING:
+    from qutebrowser.browser.onepassword.bridge import OnePasswordBridge
+
 _BRIDGE_KEY = "onepassword-bridge"
 _onepassword_items_completion = onepassword_model.onepassword_items
 
 
-def _bridge() -> "OnePasswordBridge":  # type: ignore[name-defined]  # noqa: F821
+def _bridge() -> "OnePasswordBridge":
     from qutebrowser.browser.onepassword.bridge import OnePasswordBridge
 
     b = objreg.get(_BRIDGE_KEY, default=None)
@@ -128,7 +132,7 @@ def onepassword_restart_sidecar() -> None:
     """
     if not _check_enabled():
         return
-    from qutebrowser.config import config  # noqa: PLC0415
+    from qutebrowser.config import config
 
     sidecar = shutil.which("qute-1pass-sidecar")
     if sidecar is None:
@@ -154,7 +158,7 @@ def onepassword_restart_sidecar() -> None:
     if socket_path:
         cmd += ["--socket-path", socket_path]
 
-    subprocess.Popen(cmd, start_new_session=True)  # noqa: S603
+    subprocess.Popen(cmd, start_new_session=True)
     message.info("1Password: sidecar restarted.")
 
 
@@ -168,7 +172,7 @@ def onepassword_status() -> None:
         message.info("1Password: sidecar not connected")
         return
 
-    def _show(resp: dict) -> None:
+    def _show(resp: dict[str, object]) -> None:
         if "error" in resp:
             message.error(f"1Password: {resp['error']['message']}")
             return
@@ -194,9 +198,9 @@ def onepassword_copy_username(tab: apitypes.Tab) -> None:
     """Copy the username for the current page from 1Password."""
     if not _check_enabled():
         return
-    from qutebrowser.browser.onepassword.clipboard_redact import copy_plain  # noqa: PLC0415
+    from qutebrowser.browser.onepassword.clipboard_redact import copy_plain
 
-    def _cb(item: dict | None, err: str | None) -> None:
+    def _cb(item: dict[str, object] | None, err: str | None) -> None:
         if err:
             message.error(f"1Password: {err}")
             return
@@ -212,9 +216,9 @@ def onepassword_copy_password(tab: apitypes.Tab) -> None:
     """Copy the password for the current page from 1Password (auto-clears in 30s)."""
     if not _check_enabled():
         return
-    from qutebrowser.browser.onepassword.clipboard_redact import copy_secret  # noqa: PLC0415
+    from qutebrowser.browser.onepassword.clipboard_redact import copy_secret
 
-    def _cb(item: dict | None, err: str | None) -> None:
+    def _cb(item: dict[str, object] | None, err: str | None) -> None:
         if err:
             message.error(f"1Password: {err}")
             return
@@ -234,9 +238,9 @@ def onepassword_copy_totp(tab: apitypes.Tab) -> None:
     """
     if not _check_enabled():
         return
-    from qutebrowser.browser.onepassword.clipboard_redact import copy_secret  # noqa: PLC0415
+    from qutebrowser.browser.onepassword.clipboard_redact import copy_secret
 
-    def _cb(item: dict | None, err: str | None) -> None:
+    def _cb(item: dict[str, object] | None, err: str | None) -> None:
         if err:
             message.error(f"1Password: {err}")
             return

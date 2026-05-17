@@ -3,6 +3,7 @@
 
 """Tab-side bridge: connects OnePasswordClient to tab operations."""
 
+from collections.abc import Callable
 from typing import Any, Optional
 
 from qutebrowser.qt.core import QObject, pyqtSignal, pyqtSlot
@@ -68,7 +69,7 @@ class OnePasswordBridge(QObject):
     def get_credentials(
         self,
         url: str,
-        callback: Any,
+        callback: Callable[[dict[str, Any] | None, str | None], None],
         *,
         hint_alternatives: bool = True,
     ) -> None:
@@ -138,16 +139,20 @@ class OnePasswordBridge(QObject):
             self._on_save_done,
         )
 
-    def ping(self, callback: Any) -> None:
+    def ping(self, callback: Callable[[dict[str, Any]], None]) -> None:
         self.ensure_connected()
         self._client.call("ping", {}, callback)
 
-    def passkey_get(self, params: dict[str, Any], callback: Any) -> None:
+    def passkey_get(
+        self, params: dict[str, Any], callback: Callable[[dict[str, Any]], None]
+    ) -> None:
         """Forward a passkey assertion request to the sidecar."""
         self.ensure_connected()
         self._client.call("passkey_get", params, callback)
 
-    def passkey_create(self, params: dict[str, Any], callback: Any) -> None:
+    def passkey_create(
+        self, params: dict[str, Any], callback: Callable[[dict[str, Any]], None]
+    ) -> None:
         """Forward a passkey registration request to the sidecar."""
         self.ensure_connected()
         self._client.call("passkey_create", params, callback)

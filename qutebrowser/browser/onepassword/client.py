@@ -6,7 +6,8 @@
 import json
 import os
 import pathlib
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any, Optional
 
 from qutebrowser.qt.core import QObject, QTimer, pyqtSignal, pyqtSlot
 from qutebrowser.qt.network import QLocalSocket
@@ -14,7 +15,7 @@ from qutebrowser.utils import log
 
 
 def _socket_path() -> str:
-    from qutebrowser.config import config  # noqa: PLC0415
+    from qutebrowser.config import config
 
     custom = config.val.onepassword.socket_path
     if custom:

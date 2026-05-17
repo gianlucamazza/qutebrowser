@@ -1170,9 +1170,9 @@ class _WebEngineScripts(QObject):
         """Set up the 1Password autosave shim if the integration is enabled."""
         if not config.val.onepassword.enabled:
             return
-        from qutebrowser.qt.webchannel import QWebChannel  # noqa: PLC0415
-        from qutebrowser.browser.onepassword.channel import setup_for_page  # noqa: PLC0415
-        from qutebrowser.browser.onepassword.commands import _bridge  # noqa: PLC0415
+        from qutebrowser.qt.webchannel import QWebChannel
+        from qutebrowser.browser.onepassword.channel import setup_for_page
+        from qutebrowser.browser.onepassword.commands import _bridge
 
         page = self._widget.page()
         # Keep the channel alive for the lifetime of the page by parenting it.
