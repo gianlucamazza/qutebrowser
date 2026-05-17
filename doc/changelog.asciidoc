@@ -23,10 +23,10 @@ Added
 ~~~~~
 
 - Experimental 1Password integration via the `qute-1pass-sidecar` daemon.
-  Commands: `:onepassword {pick,fill,fill-field,copy-username,copy-password,copy-totp,save,status,restart-sidecar}`.
+  Commands: `:onepassword-{pick,fill,fill-field,copy-username,copy-password,copy-totp,save,status,restart-sidecar}`.
   Secrets copied to the clipboard (password, TOTP) are automatically cleared after 30 seconds.
-  `:onepassword pick` opens a completion popup with URL-matched vault items.
-  `:onepassword fill-field` fills the focused element only — useful for multi-step login forms.
+  `:onepassword-pick` opens a completion popup with URL-matched vault items.
+  `:onepassword-fill-field` fills the focused element only — useful for multi-step login forms.
   `onepassword.*` settings. Passkey support is plumbing-ready but
   capability-gated; only the experimental `native` backend (off by default)
   will exercise it. See `doc/onepassword.asciidoc` for setup instructions.
@@ -36,7 +36,7 @@ Added
   `qute-1pass-sidecar` bridge launcher installed at `/usr/local/bin/` (root-owned)
   and registered in `/etc/1password/custom_allowed_browsers`. Falls back
   transparently to `op-cli` on startup failure; the degraded state and reason are
-  surfaced via `:onepassword status`. Gated behind
+  surfaced via `:onepassword-status`. Gated behind
   `onepassword.experimental_bridge = true` as this likely violates 1Password's
   Terms of Service.
 - FIDO2 User Verification support for WebAuthn dialogs (#8533).
