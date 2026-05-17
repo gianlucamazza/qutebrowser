@@ -4108,6 +4108,11 @@ onepassword.enabled:
     Requires the qute-1pass-sidecar daemon to be running. See
     misc/onepassword-sidecar/ for setup instructions.
 
+    Passkey support (navigator.credentials interception) requires a backend
+    that advertises the passkey_get/passkey_create capability — currently only
+    the experimental `native` backend. With `op-cli` (the default), passkey
+    requests fall through to the built-in Qt WebAuthn dialog.
+
 onepassword.backend:
   default: op-cli
   type:

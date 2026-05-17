@@ -15,9 +15,28 @@ class _FakeTab:
 class _FakeBridge:
     def __init__(self):
         self.saved: list[tuple[str, str, str]] = []
+        self.passkey_calls: list[tuple[str, dict, object]] = []
+        self.capabilities: set[str] = set()
+
+    # Minimal QObject-compatible no-op; real bridge emits pyqtSignal.
+    # Tests that exercise capabilities_changed use test_channel_passkey.py.
+    capabilities_changed = property(lambda self: _FakeSignal())
 
     def save(self, url: str, username: str, password: str) -> None:
         self.saved.append((url, username, password))
+
+    def passkey_get(self, params: dict, callback) -> None:
+        self.passkey_calls.append(("get", params, callback))
+
+    def passkey_create(self, params: dict, callback) -> None:
+        self.passkey_calls.append(("create", params, callback))
+
+
+class _FakeSignal:
+    """Minimal stub so _FakeBridge.capabilities_changed.connect() does not crash."""
+
+    def connect(self, slot) -> None:
+        pass
 
 
 @pytest.fixture()

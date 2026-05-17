@@ -5,7 +5,7 @@
 
 from typing import Any, Optional
 
-from qutebrowser.qt.core import QObject, pyqtSlot
+from qutebrowser.qt.core import QObject, pyqtSignal, pyqtSlot
 from qutebrowser.browser.onepassword.client import OnePasswordClient
 from qutebrowser.utils import log, message, utils
 
@@ -16,6 +16,8 @@ class OnePasswordBridge(QObject):
     One instance per application; individual tab actions receive the active tab.
     """
 
+    capabilities_changed = pyqtSignal()
+
     def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self._client = OnePasswordClient(self)
@@ -23,15 +25,25 @@ class OnePasswordBridge(QObject):
         self._client.connected.connect(self._on_connected)
         self._client.disconnected.connect(self._on_disconnected)
         self._connected = False
+        self._capabilities: set[str] = set()
+        self._ping_done = False
 
     # ------------------------------------------------------------------
     # public
     # ------------------------------------------------------------------
 
+    @property
+    def capabilities(self) -> set[str]:
+        """Last known backend capabilities; empty until first ping completes."""
+        return self._capabilities
+
     def ensure_connected(self) -> None:
-        """Connect to sidecar if not already connected."""
+        """Connect to sidecar if not already connected; trigger ping once."""
         if not self._client.is_connected():
             self._client.connect_to_sidecar()
+        if not self._ping_done:
+            self._ping_done = True
+            self.ping(self._on_ping_result)
 
     def disconnect(self) -> None:
         self._client.disconnect_from_sidecar()
@@ -58,9 +70,28 @@ class OnePasswordBridge(QObject):
         self.ensure_connected()
         self._client.call("ping", {}, callback)
 
+    def passkey_get(self, params: dict[str, Any], callback: Any) -> None:
+        """Forward a passkey assertion request to the sidecar."""
+        self.ensure_connected()
+        self._client.call("passkey_get", params, callback)
+
+    def passkey_create(self, params: dict[str, Any], callback: Any) -> None:
+        """Forward a passkey registration request to the sidecar."""
+        self.ensure_connected()
+        self._client.call("passkey_create", params, callback)
+
     # ------------------------------------------------------------------
     # callbacks
     # ------------------------------------------------------------------
+
+    def _on_ping_result(self, resp: dict[str, Any]) -> None:
+        if "error" in resp:
+            log.misc.warning(f"1Password: ping failed: {resp['error']['message']}")
+            return
+        caps = resp.get("result", {}).get("capabilities", [])
+        self._capabilities = set(caps)
+        log.misc.debug(f"1Password: backend capabilities: {sorted(self._capabilities)}")
+        self.capabilities_changed.emit()
 
     def _on_find_items(
         self, resp: dict[str, Any], tab: Any, url: str, otp: bool
