@@ -28,6 +28,30 @@ pipx install .
 
 This installs the `qute-1pass-sidecar` executable.
 
+## Native backend launcher (optional, required for `--backend native`)
+
+The native backend communicates with 1Password by spawning
+`/opt/1Password/1Password-BrowserSupport` — the same helper process used
+by the official browser extension. BrowserSupport verifies its caller's
+binary via `/proc/<ppid>/exe` and requires it to be root-owned and
+listed in `/etc/1password/custom_allowed_browsers`.
+
+The bundled `launcher/` directory contains a small C bridge program that
+forks BrowserSupport as a child and proxies stdin/stdout via `poll()`.
+Build and install it with:
+
+```bash
+make -C launcher
+sudo install -Dm755 -o root -g root \
+    launcher/qute-1pass-sidecar /usr/local/bin/qute-1pass-sidecar
+echo qute-1pass-sidecar | sudo tee -a /etc/1password/custom_allowed_browsers
+```
+
+If the launcher is not installed, starting the sidecar with
+`--backend native` will automatically fall back to `op-cli` and
+report the reason via `ping()` (visible via `:onepassword status` in
+qutebrowser).
+
 ## Run
 
 ```bash

@@ -27,6 +27,15 @@ Added
   `onepassword.*` settings. Passkey support is plumbing-ready but
   capability-gated; only the experimental `native` backend (off by default)
   will exercise it. See `doc/onepassword.asciidoc` for setup instructions.
+- Experimental `native` backend for the 1Password sidecar: reverse-engineers
+  the Chrome Native Messaging channel of `/opt/1Password/1Password-BrowserSupport`
+  to validate vault state without requiring the `op` CLI. Requires the bundled
+  `qute-1pass-sidecar` bridge launcher installed at `/usr/local/bin/` (root-owned)
+  and registered in `/etc/1password/custom_allowed_browsers`. Falls back
+  transparently to `op-cli` on startup failure; the degraded state and reason are
+  surfaced via `:onepassword status`. Gated behind
+  `onepassword.experimental_bridge = true` as this likely violates 1Password's
+  Terms of Service.
 - FIDO2 User Verification support for WebAuthn dialogs (#8533).
 
 [[v3.7.0]]

@@ -106,3 +106,46 @@ def test_restart_sidecar_no_socket_path_when_empty(
     config_stub.set_obj("onepassword.backend", "op-cli")
     onepassword_restart_sidecar()
     assert "--socket-path" not in launched[0]
+
+
+# ---------------------------------------------------------------------------
+# onepassword_status — degraded backend display
+# ---------------------------------------------------------------------------
+
+
+def test_status_shows_degraded_reason(qapp, monkeypatch):
+    from qutebrowser.utils import message
+    from qutebrowser.browser.onepassword import commands
+
+    infos = []
+    monkeypatch.setattr(message, "info", lambda s: infos.append(s))
+
+    fake_bridge = type(
+        "FakeBridge",
+        (),
+        {
+            "is_connected": lambda self: True,
+            "capabilities": set(),
+            "ping": lambda self, cb: cb(
+                {
+                    "result": {
+                        "backend": "OpCliBackend",
+                        "locked": False,
+                        "degraded": True,
+                        "degraded_from": "native",
+                        "degraded_reason": "launcher not found",
+                        "capabilities": [],
+                    }
+                }
+            ),
+        },
+    )()
+
+    from qutebrowser.utils import objreg
+
+    monkeypatch.setattr(objreg, "get", lambda key, default=None: fake_bridge)
+
+    onepassword_status()
+    assert len(infos) == 1
+    assert "degraded from native" in infos[0]
+    assert "launcher not found" in infos[0]

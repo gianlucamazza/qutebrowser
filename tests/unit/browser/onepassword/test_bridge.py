@@ -32,6 +32,25 @@ def test_on_ping_result_populates_capabilities(qtbot, bridge):
     assert bridge.capabilities == {"fill", "save", "passkey_get"}
 
 
+def test_on_ping_result_populates_backend_status(bridge):
+    bridge._on_ping_result(
+        {
+            "result": {
+                "capabilities": ["fill", "save"],
+                "backend": "OpCliBackend",
+                "degraded": True,
+                "degraded_from": "native",
+                "degraded_reason": "launcher not found",
+            }
+        }
+    )
+    assert bridge.backend_status["degraded"] is True
+    assert bridge.backend_status["degraded_from"] == "native"
+    assert bridge.backend_status["degraded_reason"] == "launcher not found"
+    assert bridge.backend_status["backend"] == "OpCliBackend"
+    assert "capabilities" not in bridge.backend_status
+
+
 def test_on_ping_result_error_leaves_capabilities_empty(bridge, caplog):
     with caplog.at_level(logging.WARNING, logger="misc"):
         bridge._on_ping_result({"error": {"message": "sidecar error"}})

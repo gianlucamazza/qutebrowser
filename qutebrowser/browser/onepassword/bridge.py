@@ -26,6 +26,7 @@ class OnePasswordBridge(QObject):
         self._client.disconnected.connect(self._on_disconnected)
         self._connected = False
         self._capabilities: set[str] = set()
+        self._backend_status: dict[str, Any] = {}
         self._ping_done = False
 
     # ------------------------------------------------------------------
@@ -36,6 +37,11 @@ class OnePasswordBridge(QObject):
     def capabilities(self) -> set[str]:
         """Last known backend capabilities; empty until first ping completes."""
         return self._capabilities
+
+    @property
+    def backend_status(self) -> dict[str, Any]:
+        """Last known backend status fields (all ping result fields except capabilities)."""
+        return self._backend_status
 
     def ensure_connected(self) -> None:
         """Connect to sidecar if not already connected; trigger ping once."""
@@ -91,8 +97,10 @@ class OnePasswordBridge(QObject):
         if "error" in resp:
             log.misc.warning(f"1Password: ping failed: {resp['error']['message']}")
             return
-        caps = resp.get("result", {}).get("capabilities", [])
+        result = resp.get("result", {})
+        caps = result.get("capabilities", [])
         self._capabilities = set(caps)
+        self._backend_status = {k: v for k, v in result.items() if k != "capabilities"}
         log.misc.debug(f"1Password: backend capabilities: {sorted(self._capabilities)}")
         self.capabilities_changed.emit()
 

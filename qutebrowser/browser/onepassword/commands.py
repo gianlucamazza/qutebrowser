@@ -133,8 +133,14 @@ def onepassword_status() -> None:
             message.error(f"1Password: {resp['error']['message']}")
             return
         r = resp.get("result", {})
+        backend = r.get("backend", "?")
+        if r.get("degraded"):
+            backend = (
+                f"{backend} (degraded from {r.get('degraded_from', '?')}: "
+                f"{r.get('degraded_reason', '?')})"
+            )
         message.info(
-            f"1Password: backend={r.get('backend', '?')}, "
+            f"1Password: backend={backend}, "
             f"locked={r.get('locked', False)}, "
             f"capabilities={sorted(b.capabilities)}"
         )
