@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Gianluca
+# SPDX-FileCopyrightText: Gianluca Mazza <info@gianlucamazza.it>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """Async JSON-RPC 2.0 client connecting to the 1Password sidecar over a Unix socket."""

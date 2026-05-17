@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Gianluca
+ * SPDX-FileCopyrightText: Gianluca Mazza <info@gianlucamazza.it>
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * qute_browser_spoof.c — LD_PRELOAD shim for 1Password BrowserSupport.

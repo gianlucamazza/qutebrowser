@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Gianluca
+# SPDX-FileCopyrightText: Gianluca Mazza <info@gianlucamazza.it>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """1Password NativeProtocolBackend — speaks Chrome Native Messaging to BrowserSupport.

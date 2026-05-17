@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Gianluca
+# SPDX-FileCopyrightText: Gianluca Mazza <info@gianlucamazza.it>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """Abstract base class for 1Password sidecar backends."""

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Gianluca
+# SPDX-FileCopyrightText: Gianluca Mazza <info@gianlucamazza.it>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """Tests for clipboard_redact helpers."""

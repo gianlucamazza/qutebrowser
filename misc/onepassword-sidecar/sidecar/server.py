@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Gianluca
+# SPDX-FileCopyrightText: Gianluca Mazza <info@gianlucamazza.it>
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """JSON-RPC 2.0 server over a Unix domain socket."""

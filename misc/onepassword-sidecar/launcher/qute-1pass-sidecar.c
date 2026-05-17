@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Gianluca
+ * SPDX-FileCopyrightText: Gianluca Mazza <info@gianlucamazza.it>
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * qute-1pass-sidecar.c — Bridge launcher for 1Password BrowserSupport.
