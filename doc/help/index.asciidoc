@@ -15,6 +15,7 @@ The following help pages are currently available:
 * link:commands{outfilesuffix}[Documentation of commands]
 * link:configuring{outfilesuffix}[Configuring qutebrowser]
 * link:settings{outfilesuffix}[Documentation of settings]
+* link:../onepassword{outfilesuffix}[1Password integration (experimental)]
 * link:../userscripts{outfilesuffix}[How to write userscripts]
 * link:../contributing{outfilesuffix}[Contributing to qutebrowser]
 * link:../install{outfilesuffix}[Installing qutebrowser]

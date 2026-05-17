@@ -380,6 +380,13 @@ recommended!), or `:set -u some.domain content.javascript.clipboard access` if
 you want to limit the setting to `some.domain`.
 
 
+How do I use my 1Password vault in qutebrowser?::
+    qutebrowser has a built-in experimental 1Password integration.
+    It requires the `qute-1pass-sidecar` daemon to be running — see
+    link:onepassword{outfilesuffix}[the 1Password integration page] for
+    setup instructions, available commands (`:onepassword fill`,
+    `:onepassword save`, `:onepassword status`), and settings.
+
 == Troubleshooting
 
 Unable to view Flash content.::
