@@ -105,8 +105,16 @@ class SidecarServer:
         except (OpCliError, NotImplementedError) as e:
             return _error(req_id, -32000, str(e))
         except Exception as e:  # noqa: BLE001
-            log.exception("Unhandled error in %s", method)
-            return _error(req_id, -32603, f"Internal error: {e}")
+            # Import lazily to avoid cycle when native backend is unavailable.
+            try:
+                from sidecar.backends.native_protocol import NativeProtocolError
+
+                if isinstance(e, NativeProtocolError):
+                    return _error(req_id, -32000, str(e))
+            except ImportError:
+                pass
+            log.error("Unhandled error in %s: %s", method, type(e).__name__)
+            return _error(req_id, -32603, f"Internal error: {type(e).__name__}")
 
     def _call(self, method: str, params: dict[str, Any]) -> Any:
         b = self._backend
