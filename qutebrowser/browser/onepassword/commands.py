@@ -49,6 +49,24 @@ def onepassword_fill(tab: apitypes.Tab, otp: bool = False) -> None:
 
 @cmdutils.register()
 @cmdutils.argument("tab", value=cmdutils.Value.cur_tab)
+def onepassword_fill_field(tab: apitypes.Tab) -> None:
+    """Fill only the currently focused input field using 1Password.
+
+    Unlike ``onepassword-fill``, this command targets the single focused
+    element and uses its ``type``, ``autocomplete``, and ``name`` attributes
+    to decide whether to inject the username or the password.  Useful for
+    multi-step login forms (e.g. Google, Microsoft) that show username and
+    password on separate pages.
+
+    Bind it to a key and press it while the input field is focused.
+    """
+    if not _check_enabled():
+        return
+    _bridge().fill_field(tab, tab.url().toString())
+
+
+@cmdutils.register()
+@cmdutils.argument("tab", value=cmdutils.Value.cur_tab)
 def onepassword_save(tab: apitypes.Tab) -> None:
     """Prompt for credentials and save them to 1Password for the current URL.
 

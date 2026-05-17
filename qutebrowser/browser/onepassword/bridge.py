@@ -103,6 +103,20 @@ class OnePasswordBridge(QObject):
 
         self._client.call("find_items", {"url": url}, _on_find)
 
+    def fill_field(self, tab: Any, url: str) -> None:
+        """Fill only the currently focused input field.
+
+        Inspects the focused element's type/autocomplete/name attributes to decide
+        whether to inject the username or the password. Useful for multi-step login
+        forms where username and password appear on separate pages.
+        """
+        self.ensure_connected()
+        self.get_credentials(
+            url,
+            lambda item, err: self._on_credentials_for_fill_field(item, err, tab),
+            hint_alternatives=False,
+        )
+
     def save(self, url: str, username: str, password: str) -> None:
         """Save a login to 1Password."""
         self.ensure_connected()
@@ -160,6 +174,17 @@ class OnePasswordBridge(QObject):
             copy_secret(totp, "TOTP")
         elif otp and not totp:
             message.info("1Password: no TOTP field found for this item.")
+
+    def _on_credentials_for_fill_field(
+        self, item: dict[str, Any] | None, err: str | None, tab: Any
+    ) -> None:
+        if err:
+            message.error(f"1Password: {err}")
+            return
+        assert item is not None
+        username = item.get("username", "")
+        password = item.get("password", "")
+        tab.run_js_async(_build_fill_field_js(username, password))
 
     def _on_save_done(self, resp: dict[str, Any]) -> None:
         if "error" in resp:
@@ -224,5 +249,46 @@ def _build_fill_js(username: str, password: str) -> str:
             if (inp.type === 'password') fill(inp, '{p}');
         }});
     }});
+}})();
+"""
+
+
+def _build_fill_field_js(username: str, password: str) -> str:
+    """Return JS that fills only document.activeElement based on its field type.
+
+    Uses autocomplete, type, and name attributes to decide whether to inject
+    the username or the password. Returns a JSON string describing what was
+    done (or an error) so callers can log the outcome.
+    """
+    u = _js_escape(username)
+    p = _js_escape(password)
+    return f"""
+(function() {{
+    var el = document.activeElement;
+    if (!el || el.tagName !== 'INPUT') {{
+        return JSON.stringify({{error: 'no focused input element'}});
+    }}
+    var t = (el.type || '').toLowerCase();
+    var ac = (el.autocomplete || '').toLowerCase();
+    var name = (el.name || el.id || '').toLowerCase();
+    var kind = 'unknown';
+    if (t === 'password' || ac.includes('password') || /pass/.test(name)) {{
+        kind = 'password';
+    }} else if (
+        t === 'email' || ac.includes('username') || ac.includes('email') ||
+        /user|login|email|mail/.test(name)
+    ) {{
+        kind = 'username';
+    }}
+    if (kind === 'unknown') {{
+        return JSON.stringify({{error: 'cannot detect field type (type=' + t + ', autocomplete=' + ac + ', name=' + name + ')'}});
+    }}
+    var val = kind === 'password' ? '{p}' : '{u}';
+    var nativeSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value').set;
+    nativeSetter.call(el, val);
+    el.dispatchEvent(new Event('input', {{bubbles: true}}));
+    el.dispatchEvent(new Event('change', {{bubbles: true}}));
+    return JSON.stringify({{kind: kind}});
 }})();
 """

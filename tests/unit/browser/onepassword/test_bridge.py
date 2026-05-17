@@ -186,3 +186,37 @@ def test_get_credentials_find_error_propagates(bridge, monkeypatch):
     )
 
     assert received[0] == (None, "vault locked")
+
+
+# ---------------------------------------------------------------------------
+# fill_field + _build_fill_field_js
+# ---------------------------------------------------------------------------
+
+
+def test_fill_field_calls_get_credentials_no_hint(bridge, monkeypatch):
+    calls = []
+
+    def fake_get_creds(url, cb, *, hint_alternatives=True):
+        calls.append(hint_alternatives)
+        cb({"username": "u", "password": "p"}, None)
+
+    bridge._ping_done = True
+    monkeypatch.setattr(bridge, "get_credentials", fake_get_creds)
+
+    js_executed = []
+    tab = type("T", (), {"run_js_async": lambda self, js: js_executed.append(js)})()
+    bridge.fill_field(tab, "https://example.com")
+
+    assert calls == [False], "fill_field must pass hint_alternatives=False"
+    assert len(js_executed) == 1
+    assert "activeElement" in js_executed[0]
+
+
+def test_build_fill_field_js_contains_credentials():
+    from qutebrowser.browser.onepassword.bridge import _build_fill_field_js
+
+    js = _build_fill_field_js("alice", "s3cr3t")
+    assert "alice" in js
+    assert "s3cr3t" in js
+    assert "autocomplete" in js
+    assert "kind" in js
