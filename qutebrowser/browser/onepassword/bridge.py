@@ -103,6 +103,18 @@ class OnePasswordBridge(QObject):
 
         self._client.call("find_items", {"url": url}, _on_find)
 
+    def fill_by_id(self, tab: Any, item_id: str) -> None:
+        """Fetch a specific vault item by ID and fill the current page's form."""
+        self.ensure_connected()
+
+        def _on_get(resp: dict[str, Any]) -> None:
+            if "error" in resp:
+                message.error(f"1Password: {resp['error']['message']}")
+                return
+            self._on_credentials_for_fill(resp.get("result", {}), None, tab, False)
+
+        self._client.call("get_item", {"id": item_id}, _on_get)
+
     def fill_field(self, tab: Any, url: str) -> None:
         """Fill only the currently focused input field.
 

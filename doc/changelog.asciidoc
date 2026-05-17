@@ -23,7 +23,10 @@ Added
 ~~~~~
 
 - Experimental 1Password integration via the `qute-1pass-sidecar` daemon.
-  New `:onepassword {fill,save,status,restart-sidecar}` commands and
+  Commands: `:onepassword {pick,fill,fill-field,copy-username,copy-password,copy-totp,save,status,restart-sidecar}`.
+  Secrets copied to the clipboard (password, TOTP) are automatically cleared after 30 seconds.
+  `:onepassword pick` opens a completion popup with URL-matched vault items.
+  `:onepassword fill-field` fills the focused element only — useful for multi-step login forms.
   `onepassword.*` settings. Passkey support is plumbing-ready but
   capability-gated; only the experimental `native` backend (off by default)
   will exercise it. See `doc/onepassword.asciidoc` for setup instructions.

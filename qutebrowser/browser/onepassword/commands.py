@@ -7,9 +7,11 @@ import shutil
 import subprocess
 
 from qutebrowser.api import apitypes, cmdutils
+from qutebrowser.completion.models import onepassword_model
 from qutebrowser.utils import message, objreg, usertypes
 
 _BRIDGE_KEY = "onepassword-bridge"
+_onepassword_items_completion = onepassword_model.onepassword_items
 
 
 def _bridge() -> "OnePasswordBridge":  # type: ignore[name-defined]  # noqa: F821
@@ -32,6 +34,26 @@ def _check_enabled() -> bool:
         )
         return False
     return True
+
+
+@cmdutils.register()
+@cmdutils.argument("tab", value=cmdutils.Value.cur_tab)
+@cmdutils.argument("item_id", completion=_onepassword_items_completion)
+def onepassword_pick(tab: apitypes.Tab, item_id: str) -> None:
+    """Choose a 1Password item from a completion list and fill the form.
+
+    Opens a completion popup with vault items matching the current page URL.
+    Select an item with Tab/Enter to fill the form, or type part of the title
+    or username to filter. Requires ``op`` CLI v2 to be on PATH and authenticated.
+
+    Args:
+        item_id: The vault item ID to use (selected via completion).
+    """
+    if not _check_enabled():
+        return
+    if not item_id:
+        raise cmdutils.CommandError("No item selected.")
+    _bridge().fill_by_id(tab, item_id)
 
 
 @cmdutils.register()
