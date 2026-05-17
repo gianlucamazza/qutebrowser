@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# DEPRECATED: uses op CLI v1 (no longer maintained by 1Password).
+# Use the built-in 1Password integration instead:
+#   :set onepassword.enabled true   (requires qute-1pass-sidecar on PATH)
+#   :onepassword fill               (autofill credentials)
+#   :onepassword save               (save credentials)
+#   :onepassword status             (check sidecar connection)
+# See misc/onepassword-sidecar/ for sidecar setup instructions.
 
 set +e
 

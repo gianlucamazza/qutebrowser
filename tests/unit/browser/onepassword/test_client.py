@@ -8,7 +8,7 @@ import logging
 
 import pytest
 
-from qutebrowser.browser.onepassword.client import OnePasswordClient
+from qutebrowser.browser.onepassword.client import OnePasswordClient, _socket_path
 
 
 # ---------------------------------------------------------------------------
@@ -87,3 +87,19 @@ def test_buffer_splits_on_newlines(client):
     assert len(results) == 2
     assert results[0]["result"] == "a"
     assert results[1]["result"] == "b"
+
+
+# ---------------------------------------------------------------------------
+# socket_path config override
+# ---------------------------------------------------------------------------
+
+
+def test_socket_path_uses_config(config_stub):
+    config_stub.set_obj("onepassword.socket_path", "/custom/op.sock")
+    assert _socket_path() == "/custom/op.sock"
+
+
+def test_socket_path_default_uses_xdg_runtime_dir(config_stub, monkeypatch):
+    # socket_path defaults to "" — fall back to XDG_RUNTIME_DIR
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/1000")
+    assert _socket_path() == "/run/user/1000/qute-1pass.sock"

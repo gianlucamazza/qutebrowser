@@ -14,6 +14,11 @@ from qutebrowser.utils import log
 
 
 def _socket_path() -> str:
+    from qutebrowser.config import config  # noqa: PLC0415
+
+    custom = config.val.onepassword.socket_path
+    if custom:
+        return custom
     runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
     return str(pathlib.Path(runtime) / "qute-1pass.sock")
 

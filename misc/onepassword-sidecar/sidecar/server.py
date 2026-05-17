@@ -32,10 +32,14 @@ def _socket_path() -> pathlib.Path:
 
 
 class SidecarServer:
-    def __init__(self, backend: OnePasswordBackend | None = None) -> None:
+    def __init__(
+        self,
+        backend: OnePasswordBackend | None = None,
+        socket_path: str = "",
+    ) -> None:
         self._backend: OnePasswordBackend = backend or OpCliBackend()
         self._sock: socket.socket | None = None
-        self._path = _socket_path()
+        self._path = pathlib.Path(socket_path) if socket_path else _socket_path()
 
     # ------------------------------------------------------------------
     # lifecycle
@@ -154,6 +158,11 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="qutebrowser 1Password sidecar")
     parser.add_argument("--backend", choices=["op-cli", "native"], default="op-cli")
+    parser.add_argument(
+        "--socket-path",
+        default="",
+        help="Unix socket path (default: $XDG_RUNTIME_DIR/qute-1pass.sock)",
+    )
     args = parser.parse_args()
 
     if args.backend == "native":
@@ -167,7 +176,7 @@ def main() -> None:
     else:
         backend = OpCliBackend()
 
-    server = SidecarServer(backend=backend)
+    server = SidecarServer(backend=backend, socket_path=args.socket_path)
     signal.signal(signal.SIGTERM, lambda *_: server.stop())
     signal.signal(signal.SIGINT, lambda *_: server.stop())
     server.start()

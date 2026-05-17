@@ -4142,19 +4142,23 @@ onepassword.experimental_bridge:
 
 onepassword.socket_path:
   default: ""
-  type: String
+  type:
+    name: String
+    none_ok: true
   desc: >-
     Path to the 1Password sidecar Unix socket.
 
-    If empty, defaults to `$XDG_RUNTIME_DIR/qute-1pass.sock`.
+    If empty, defaults to ``$XDG_RUNTIME_DIR/qute-1pass.sock``.
 
 onepassword.autosave_on_submit:
   default: true
   type: Bool
   desc: >-
-    Offer to save new credentials to 1Password after a form submission.
+    Prompt yes/no when a password form is submitted on the current page.
 
-    Not yet implemented; reserved for Phase B.
+    If accepted, forwards the credentials to the 1Password sidecar via
+    ``save_login``. Requires ``onepassword.enabled = true`` and the sidecar
+    to be running.
 
 ## logging
 

@@ -88,6 +88,7 @@ def onepassword_restart_sidecar() -> None:
     """
     if not _check_enabled():
         return
+    from qutebrowser.config import config  # noqa: PLC0415
 
     sidecar = shutil.which("qute-1pass-sidecar")
     if sidecar is None:
@@ -96,9 +97,46 @@ def onepassword_restart_sidecar() -> None:
             "See misc/onepassword-sidecar/ for installation."
         )
 
+    backend = config.val.onepassword.backend
+    if backend == "native" and not config.val.onepassword.experimental_bridge:
+        raise cmdutils.CommandError(
+            "native backend requires onepassword.experimental_bridge = true. "
+            "Warning: this backend reverse-engineers 1Password's internal protocol "
+            "and may violate 1Password's Terms of Service."
+        )
+
     b = objreg.get(_BRIDGE_KEY, default=None)
     if b is not None:
         b.disconnect()
 
-    subprocess.Popen([sidecar], start_new_session=True)  # noqa: S603
+    cmd = [sidecar, "--backend", backend]
+    socket_path = config.val.onepassword.socket_path
+    if socket_path:
+        cmd += ["--socket-path", socket_path]
+
+    subprocess.Popen(cmd, start_new_session=True)  # noqa: S603
     message.info("1Password: sidecar restarted.")
+
+
+@cmdutils.register()
+def onepassword_status() -> None:
+    """Show 1Password sidecar connection status and capabilities."""
+    if not _check_enabled():
+        return
+    b = _bridge()
+    if not b.is_connected():
+        message.info("1Password: sidecar not connected")
+        return
+
+    def _show(resp: dict) -> None:
+        if "error" in resp:
+            message.error(f"1Password: {resp['error']['message']}")
+            return
+        r = resp.get("result", {})
+        message.info(
+            f"1Password: backend={r.get('backend', '?')}, "
+            f"locked={r.get('locked', False)}, "
+            f"capabilities={sorted(b.capabilities)}"
+        )
+
+    b.ping(_show)

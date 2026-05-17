@@ -45,6 +45,9 @@ class OnePasswordBridge(QObject):
             self._ping_done = True
             self.ping(self._on_ping_result)
 
+    def is_connected(self) -> bool:
+        return self._client.is_connected()
+
     def disconnect(self) -> None:
         self._client.disconnect_from_sidecar()
 
