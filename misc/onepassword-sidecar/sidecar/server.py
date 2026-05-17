@@ -52,8 +52,13 @@ class SidecarServer:
         if self._path.exists():
             self._path.unlink()
         self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self._sock.bind(str(self._path))
-        self._path.chmod(0o600)
+        # Set umask so the socket file is created 0600 from the start,
+        # eliminating the race between bind() and a subsequent chmod().
+        old_umask = os.umask(0o177)
+        try:
+            self._sock.bind(str(self._path))
+        finally:
+            os.umask(old_umask)
         self._sock.listen(8)
         log.info(
             "Listening on %s (backend: %s)", self._path, type(self._backend).__name__
