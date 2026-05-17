@@ -70,6 +70,10 @@ class OnePasswordClient(QObject):
         callback: Callable[[dict[str, Any]], None],
     ) -> None:
         """Send a JSON-RPC request; call callback(result_or_error_dict) on reply."""
+        if not self.is_connected():
+            log.misc.debug(f"1Password: call {method!r} dropped, not connected")
+            callback({"error": {"code": -32000, "message": "sidecar not connected"}})
+            return
         req_id = self._next_id
         self._next_id += 1
         self._pending[req_id] = callback

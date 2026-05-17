@@ -9,6 +9,7 @@ import logging
 import pytest
 
 from qutebrowser.browser.onepassword.client import OnePasswordClient, _socket_path
+from qutebrowser.qt.network import QLocalSocket
 
 
 # ---------------------------------------------------------------------------
@@ -36,6 +37,9 @@ def test_call_increments_id(client):
         calls.append(json.loads(data.decode().strip()))
 
     client._socket.write = _fake_write  # type: ignore[method-assign]
+    client._socket.state = (  # type: ignore[method-assign]
+        lambda: QLocalSocket.LocalSocketState.ConnectedState
+    )
 
     client.call("ping", {}, lambda r: None)
     client.call("find_items", {"url": "https://x.com"}, lambda r: None)
