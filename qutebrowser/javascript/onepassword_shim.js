@@ -5,28 +5,34 @@
 // Observes password-form submissions (autosave) and optionally intercepts
 // navigator.credentials.{get,create} for passkey support via QWebChannel.
 
-(function () {
-    "use strict";
+"use strict";
 
-    var _op = null; // the 'onepassword' QObject proxy, set once channel is ready
+(function() {
+    let _op = null; // the 'onepassword' QObject proxy, set once channel is ready
 
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 
     function _b64urlToBuf(b64url) {
-        var b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
-        while (b64.length % 4) b64 += "=";
-        var bin = atob(b64);
-        var buf = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+        let b64 = b64url.replace(/-/g, "+").replace(/_/g, "/");
+        while (b64.length % 4) {
+            b64 += "=";
+        }
+        const bin = atob(b64);
+        const buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) {
+            buf[i] = bin.charCodeAt(i);
+        }
         return buf.buffer;
     }
 
     function _bufToB64url(buf) {
-        var bytes = new Uint8Array(buf);
-        var bin = "";
-        for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        const bytes = new Uint8Array(buf);
+        let bin = "";
+        for (let i = 0; i < bytes.length; i++) {
+            bin += String.fromCharCode(bytes[i]);
+        }
         return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
     }
 
@@ -36,18 +42,19 @@
     }
 
     // Pending passkey calls: reqId -> {resolve, reject}
-    var _pending = {};
+    const _pending = {};
 
     // ------------------------------------------------------------------
     // QWebChannel bootstrap
     // ------------------------------------------------------------------
 
     function setupChannel() {
-        if (typeof QWebChannel === "undefined" || !window.qt || !window.qt.webChannelTransport) {
+        if (typeof QWebChannel === "undefined" ||
+                !window.qt || !window.qt.webChannelTransport) {
             setTimeout(setupChannel, 50);
             return;
         }
-        new QWebChannel(qt.webChannelTransport, function (ch) {
+        new QWebChannel(qt.webChannelTransport, function(ch) {
             _op = ch.objects.onepassword;
             _setupPasskeyShim();
         });
@@ -58,18 +65,18 @@
     // ------------------------------------------------------------------
 
     function extractCredentials(form) {
-        var username = "";
-        var password = "";
-        var inputs = form.querySelectorAll("input");
-        inputs.forEach(function (inp) {
-            var t = (inp.type || "text").toLowerCase();
+        let username = "";
+        let password = "";
+        const inputs = form.querySelectorAll("input");
+        inputs.forEach(function(inp) {
+            const t = (inp.type || "text").toLowerCase();
             if (t === "password" && inp.value && !password) {
                 password = inp.value;
             } else if ((t === "text" || t === "email") && inp.value && !username) {
                 username = inp.value;
             }
         });
-        return { username: username, password: password };
+        return {"username": username, "password": password};
     }
 
     // ------------------------------------------------------------------
@@ -78,19 +85,25 @@
 
     document.addEventListener(
         "submit",
-        function (e) {
-            if (!_op) return;
-            var form = e.target;
-            if (!(form instanceof HTMLFormElement)) return;
-            var creds = extractCredentials(form);
-            if (!creds.password) return;
+        function(e) {
+            if (!_op) {
+                return;
+            }
+            const form = e.target;
+            if (!(form instanceof HTMLFormElement)) {
+                return;
+            }
+            const creds = extractCredentials(form);
+            if (!creds.password) {
+                return;
+            }
             _op.autosave_requested(
                 window.location.href,
                 creds.username,
-                creds.password
+                creds.password,
             );
         },
-        true
+        true,
     );
 
     // ------------------------------------------------------------------
@@ -98,16 +111,16 @@
     // ------------------------------------------------------------------
 
     function _setupPasskeyShim() {
-        _op.capabilities(function (jsonCaps) {
-            var caps;
+        _op.capabilities(function(jsonCaps) {
+            let caps;
             try {
                 caps = JSON.parse(jsonCaps);
             } catch (e) {
                 console.warn("[1Password] failed to parse capabilities:", e);
                 return;
             }
-            var hasGet    = caps.indexOf("passkey_get")    !== -1;
-            var hasCreate = caps.indexOf("passkey_create") !== -1;
+            const hasGet = caps.indexOf("passkey_get") !== -1;
+            const hasCreate = caps.indexOf("passkey_create") !== -1;
             if (!hasGet && !hasCreate) {
                 console.debug("[1Password] passkey shim disabled (capability missing)");
                 return;
@@ -117,33 +130,43 @@
             _op.passkey_result.connect(_onPasskeyResult);
             _op.passkey_error.connect(_onPasskeyError);
 
-            if (hasGet)    _patchCredentialsGet();
-            if (hasCreate) _patchCredentialsCreate();
+            if (hasGet) {
+                _patchCredentialsGet();
+            }
+            if (hasCreate) {
+                _patchCredentialsCreate();
+            }
         });
 
         // Re-evaluate if the backend reconnects with different capabilities
-        _op.capabilities_changed.connect(function () {
+        _op.capabilities_changed.connect(function() {
             _setupPasskeyShim();
         });
     }
 
     function _onPasskeyResult(reqId, jsonBlob) {
-        var p = _pending[reqId];
-        if (!p) return;
+        const p = _pending[reqId];
+        if (!p) {
+            return;
+        }
         delete _pending[reqId];
-        var blob;
+        let blob;
         try {
             blob = JSON.parse(jsonBlob);
         } catch (e) {
-            p.reject(new DOMException("Invalid response from 1Password sidecar", "UnknownError"));
+            p.reject(new DOMException(
+                "Invalid response from 1Password sidecar", "UnknownError",
+            ));
             return;
         }
         p.resolve(blob);
     }
 
     function _onPasskeyError(reqId, msg) {
-        var p = _pending[reqId];
-        if (!p) return;
+        const p = _pending[reqId];
+        if (!p) {
+            return;
+        }
         delete _pending[reqId];
         p.reject(new DOMException(msg, "NotAllowedError"));
     }
@@ -153,37 +176,39 @@
     // ------------------------------------------------------------------
 
     function _patchCredentialsGet() {
-        var featurePolicy = document.featurePolicy || document.permissionsPolicy;
+        const featurePolicy = document.featurePolicy || document.permissionsPolicy;
         if (featurePolicy && !featurePolicy.allowsFeature("publickey-credentials-get")) {
-            console.debug("[1Password] publickey-credentials-get blocked by policy; skipping patch");
+            console.debug(
+                "[1Password] publickey-credentials-get blocked by policy; skipping patch",
+            );
             return;
         }
-        var _origGet = navigator.credentials.get.bind(navigator.credentials);
+        const _origGet = navigator.credentials.get.bind(navigator.credentials);
         try {
             Object.defineProperty(navigator.credentials, "get", {
-                configurable: true,
-                writable: true,
-                value: function (options) {
+                "configurable": true,
+                "writable": true,
+                "value": function(options) {
                     if (!options || !options.publicKey) {
                         return _origGet(options);
                     }
-                    return new Promise(function (resolve, reject) {
-                        var reqId = _mkReqId();
-                        var pk = options.publicKey;
-                        var params = {
-                            rp_id: pk.rpId || location.hostname,
-                            challenge: _bufToB64url(pk.challenge),
-                            allow_credentials: (pk.allowCredentials || []).map(function (c) {
-                                return _bufToB64url(c.id);
-                            })
+                    return new Promise(function(resolve, reject) {
+                        const reqId = _mkReqId();
+                        const pk = options.publicKey;
+                        const params = {
+                            "rp_id": pk.rpId || location.hostname,
+                            "challenge": _bufToB64url(pk.challenge),
+                            "allow_credentials": (pk.allowCredentials || []).map(
+                                function(c) { return _bufToB64url(c.id); },
+                            ),
                         };
                         _pending[reqId] = {
-                            resolve: function (blob) { resolve(_mkAssertionCred(blob)); },
-                            reject: reject
+                            "resolve": function(blob) { resolve(_mkAssertionCred(blob)); },
+                            "reject": reject,
                         };
                         _op.passkey_get(reqId, JSON.stringify(params));
                     });
-                }
+                },
             });
         } catch (e) {
             console.warn("[1Password] passkey get patch failed:", e);
@@ -195,42 +220,47 @@
     // ------------------------------------------------------------------
 
     function _patchCredentialsCreate() {
-        var featurePolicy = document.featurePolicy || document.permissionsPolicy;
-        if (featurePolicy && !featurePolicy.allowsFeature("publickey-credentials-create")) {
-            console.debug("[1Password] publickey-credentials-create blocked by policy; skipping patch");
+        const featurePolicy = document.featurePolicy || document.permissionsPolicy;
+        if (featurePolicy &&
+                !featurePolicy.allowsFeature("publickey-credentials-create")) {
+            console.debug(
+                "[1Password] publickey-credentials-create blocked by policy; skipping patch",
+            );
             return;
         }
-        var _origCreate = navigator.credentials.create.bind(navigator.credentials);
+        const _origCreate = navigator.credentials.create.bind(navigator.credentials);
         try {
             Object.defineProperty(navigator.credentials, "create", {
-                configurable: true,
-                writable: true,
-                value: function (options) {
+                "configurable": true,
+                "writable": true,
+                "value": function(options) {
                     if (!options || !options.publicKey) {
                         return _origCreate(options);
                     }
-                    return new Promise(function (resolve, reject) {
-                        var reqId = _mkReqId();
-                        var pk = options.publicKey;
-                        var params = {
-                            rp_id: pk.rp ? pk.rp.id : location.hostname,
-                            user: {
-                                id: _bufToB64url(pk.user.id),
-                                name: pk.user.name,
-                                display_name: pk.user.displayName || pk.user.name
+                    return new Promise(function(resolve, reject) {
+                        const reqId = _mkReqId();
+                        const pk = options.publicKey;
+                        const params = {
+                            "rp_id": pk.rp ? pk.rp.id : location.hostname,
+                            "user": {
+                                "id": _bufToB64url(pk.user.id),
+                                "name": pk.user.name,
+                                "display_name": pk.user.displayName || pk.user.name,
                             },
-                            challenge: _bufToB64url(pk.challenge),
-                            pub_key_cred_params: (pk.pubKeyCredParams || []).map(function (p) {
-                                return { type: p.type, alg: p.alg };
-                            })
+                            "challenge": _bufToB64url(pk.challenge),
+                            "pub_key_cred_params": (pk.pubKeyCredParams || []).map(
+                                function(p) { return {"type": p.type, "alg": p.alg}; },
+                            ),
                         };
                         _pending[reqId] = {
-                            resolve: function (blob) { resolve(_mkAttestationCred(blob)); },
-                            reject: reject
+                            "resolve": function(blob) {
+                                resolve(_mkAttestationCred(blob));
+                            },
+                            "reject": reject,
                         };
                         _op.passkey_create(reqId, JSON.stringify(params));
                     });
-                }
+                },
             });
         } catch (e) {
             console.warn("[1Password] passkey create patch failed:", e);
@@ -246,44 +276,46 @@
     // ------------------------------------------------------------------
 
     function _mkAssertionCred(blob) {
-        var credId = _b64urlToBuf(blob.credential_id_b64);
+        const credId = _b64urlToBuf(blob.credential_id_b64);
         return {
-            id:                     blob.credential_id_b64,
-            rawId:                  credId,
-            type:                   "public-key",
-            authenticatorAttachment: "cross-platform",
-            response: {
-                clientDataJSON:    _b64urlToBuf(blob.client_data_json_b64),
-                authenticatorData: _b64urlToBuf(blob.authenticator_data_b64),
-                signature:         _b64urlToBuf(blob.signature_b64),
-                userHandle:        blob.user_handle_b64 ? _b64urlToBuf(blob.user_handle_b64) : null
+            "id": blob.credential_id_b64,
+            "rawId": credId,
+            "type": "public-key",
+            "authenticatorAttachment": "cross-platform",
+            "response": {
+                "clientDataJSON": _b64urlToBuf(blob.client_data_json_b64),
+                "authenticatorData": _b64urlToBuf(blob.authenticator_data_b64),
+                "signature": _b64urlToBuf(blob.signature_b64),
+                "userHandle": blob.user_handle_b64
+                    ? _b64urlToBuf(blob.user_handle_b64)
+                    : null,
             },
-            getClientExtensionResults: function () { return {}; },
-            toJSON: function () { return this; }
+            "getClientExtensionResults": function() { return {}; },
+            "toJSON": function() { return this; },
         };
     }
 
     function _mkAttestationCred(blob) {
-        var credId = _b64urlToBuf(blob.credential_id_b64);
-        var attObj = _b64urlToBuf(blob.attestation_obj_b64);
-        var cdJson = _b64urlToBuf(blob.client_data_json_b64);
+        const credId = _b64urlToBuf(blob.credential_id_b64);
+        const attObj = _b64urlToBuf(blob.attestation_obj_b64);
+        const cdJson = _b64urlToBuf(blob.client_data_json_b64);
         return {
-            id:                     blob.credential_id_b64,
-            rawId:                  credId,
-            type:                   "public-key",
-            authenticatorAttachment: "cross-platform",
-            response: {
-                clientDataJSON:      cdJson,
-                attestationObject:   attObj,
-                getAuthenticatorData: function () { return attObj; },
-                getPublicKey:         function () { return null; },
-                getPublicKeyAlgorithm: function () { return -7; }, // ES256
-                getTransports:        function () { return ["internal"]; }
+            "id": blob.credential_id_b64,
+            "rawId": credId,
+            "type": "public-key",
+            "authenticatorAttachment": "cross-platform",
+            "response": {
+                "clientDataJSON": cdJson,
+                "attestationObject": attObj,
+                "getAuthenticatorData": function() { return attObj; },
+                "getPublicKey": function() { return null; },
+                "getPublicKeyAlgorithm": function() { return -7; }, // ES256
+                "getTransports": function() { return ["internal"]; },
             },
-            getClientExtensionResults: function () { return {}; },
-            toJSON: function () { return this; }
+            "getClientExtensionResults": function() { return {}; },
+            "toJSON": function() { return this; },
         };
     }
 
     setupChannel();
-})();
+}());
