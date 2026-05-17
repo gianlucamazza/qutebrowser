@@ -670,11 +670,18 @@ completion and request failure reporting. A request can be cancelled while a
 qutebrowser prompt is still open, so code must not keep using a stale
 `QWebEngineWebAuthUxRequest` after returning from a prompt.
 
-Password-manager passkey integrations are separate from this browser UX layer.
-For example, 1Password passkeys are exposed through supported browser
-extensions; qutebrowser should not add a custom 1Password CLI/API bridge for
-WebAuthn signing unless 1Password provides a stable public authenticator
-interface for that purpose.
+Password-manager passkey integrations are separate from this browser UX layer
+and must not touch `_WebEngineWebAuth`. An external bridge (e.g. via
+`QWebChannel` + a sidecar process) that intercepts `navigator.credentials.*`
+in the page's JavaScript world is acceptable provided it:
+
+* is capability-gated (only activated when the backend advertises support),
+* falls back cleanly to the Qt WebAuthn UX above when the capability is absent,
+* is explicitly opt-in via a config key (e.g. `onepassword.experimental_bridge`),
+* and documents any Terms-of-Service implications to the user.
+
+Do **not** modify `_WebEngineWebAuth` to dispatch passkey operations — that
+class must remain limited to pure UX state (PIN, account selection, touch).
 
 Style conventions
 -----------------
