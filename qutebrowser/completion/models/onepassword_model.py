@@ -29,6 +29,14 @@ def onepassword_items(*, info):
 
 
 def _fetch_items(url: str) -> list[tuple[str, str, str]]:
+    # Intentionally bypasses the sidecar and calls `op` directly.
+    # Rationale: qutebrowser's completion system is synchronous (called on
+    # the main thread; must return immediately), while the sidecar IPC is
+    # async/callback-based with no blocking API. Calling `op item list`
+    # with a hard timeout is the simplest degraded-friendly approach: if
+    # `op` is absent or times out, an empty list is returned and the
+    # completion popup shows nothing — no crash, no freeze. The sidecar's
+    # `find_items` method covers the non-completion fill path.
     op = shutil.which("op")
     if not op:
         return []
@@ -38,7 +46,7 @@ def _fetch_items(url: str) -> list[tuple[str, str, str]]:
         cmd += ["--url", url]
 
     try:
-        result = subprocess.run(  # noqa: S603
+        result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
