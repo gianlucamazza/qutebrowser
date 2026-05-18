@@ -80,6 +80,68 @@ def test_ensure_connected_triggers_ping_once(bridge, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# find_matches
+# ---------------------------------------------------------------------------
+
+
+def test_find_matches_delivers_list(bridge, monkeypatch):
+    bridge._ping_done = True
+    matches_received = []
+
+    def fake_call(method, params, cb):
+        if method == "find_items":
+            cb({"result": [{"id": "x", "title": "Example", "vault": "Private"}]})
+
+    monkeypatch.setattr(bridge._client, "call", fake_call)
+    bridge.find_matches(
+        "https://example.com", lambda m, e: matches_received.append((m, e))
+    )
+    assert len(matches_received) == 1
+    matches, err = matches_received[0]
+    assert err is None
+    assert matches[0]["id"] == "x"
+
+
+def test_find_matches_propagates_error(bridge, monkeypatch):
+    bridge._ping_done = True
+    results = []
+
+    def fake_call(method, params, cb):
+        if method == "find_items":
+            cb({"error": {"message": "locked"}})
+
+    monkeypatch.setattr(bridge._client, "call", fake_call)
+    bridge.find_matches("https://example.com", lambda m, e: results.append((m, e)))
+    assert results[0] == (None, "locked")
+
+
+def test_fill_by_id_passes_otp(bridge, monkeypatch):
+    bridge._ping_done = True
+    otp_received = []
+
+    def fake_call(method, params, cb):
+        if method == "get_item":
+            cb({"result": {"username": "u", "password": "p", "totp": "123456"}})
+
+    monkeypatch.setattr(bridge._client, "call", fake_call)
+
+    class FakeTab:
+        def run_js_async(self, js):
+            pass
+
+    # Track _on_credentials_for_fill otp arg
+    orig = bridge._on_credentials_for_fill
+
+    def capture(item, err, tab, otp):
+        otp_received.append(otp)
+        orig(item, err, tab, otp)
+
+    monkeypatch.setattr(bridge, "_on_credentials_for_fill", capture)
+    bridge.fill_by_id(FakeTab(), "item-id", otp=True)
+    assert otp_received == [True]
+
+
+# ---------------------------------------------------------------------------
 # passkey forwarders
 # ---------------------------------------------------------------------------
 

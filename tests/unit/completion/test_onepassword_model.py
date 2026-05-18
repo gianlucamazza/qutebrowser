@@ -29,6 +29,7 @@ def test_fetch_items_parses_op_output(monkeypatch):
             "id": "abc123",
             "title": "GitHub",
             "fields": [{"purpose": "USERNAME", "value": "user@x.com"}],
+            "vault": {"name": "Private"},
         }
     ]
     monkeypatch.setattr(
@@ -38,10 +39,11 @@ def test_fetch_items_parses_op_output(monkeypatch):
     )
     result = onepassword_model._fetch_items("https://github.com")
     assert len(result) == 1
-    item_id, title, username = result[0]
+    item_id, title, username, vault = result[0]
     assert item_id == "abc123"
     assert title == "GitHub"
     assert username == "user@x.com"
+    assert vault == "Private"
 
 
 def test_fetch_items_timeout_returns_empty(monkeypatch):

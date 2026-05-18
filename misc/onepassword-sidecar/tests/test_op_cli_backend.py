@@ -44,18 +44,21 @@ def test_find_items_returns_matching(fake_op):
             "title": "Example",
             "urls": [{"href": "https://example.com"}],
             "additional_information": "user@example.com",
+            "vault": {"name": "Private"},
         },
         {
             "id": "xyz",
             "title": "Other",
             "urls": [{"href": "https://other.com"}],
             "additional_information": "other@other.com",
+            "vault": {"name": "Work"},
         },
     ]
     backend = fake_op(items)
     results = backend.find_items("https://example.com/login")
     assert results[0]["id"] == "abc"
     assert results[0]["url_match_score"] == 1
+    assert results[0]["vault"] == "Private"
 
 
 def test_find_items_no_match_returns_empty(fake_op):

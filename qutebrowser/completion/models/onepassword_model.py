@@ -17,7 +17,8 @@ def onepassword_items(*, info):
     empty model if ``op`` is not on PATH, not authenticated, or the call times
     out — the command will show an error when the user selects nothing.
     """
-    model = completionmodel.CompletionModel(column_widths=(35, 55, 10))
+    # 4 columns: id (hidden, used as completion value), title, username, vault
+    model = completionmodel.CompletionModel(column_widths=(0, 45, 35, 20))
 
     url = ""
     if info.cur_tab is not None:
@@ -67,5 +68,6 @@ def _fetch_items(url: str) -> list[tuple[str, str, str]]:
             if field.get("purpose") == "USERNAME":
                 username = field.get("value", "")
                 break
-        entries.append((item_id, title, username))
+        vault = item.get("vault", {}).get("name", "")
+        entries.append((item_id, title, username, vault))
     return entries

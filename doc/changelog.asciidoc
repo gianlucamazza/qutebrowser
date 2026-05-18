@@ -44,6 +44,11 @@ Added
 Fixed
 ~~~~~
 
+- `:onepassword-fill` now opens the picker when more than one vault item
+  matches the page URL, instead of silently picking the first match.
+  Fixes wrong credentials being filled when the same site has logins stored
+  in multiple vaults. The picker now also shows a "Vault" column for
+  explicit disambiguation.
 - `:onepassword-fill` URL matching now uses strict subdomain rules:
   `evilgithub.com` no longer matches a `github.com` vault item.
 

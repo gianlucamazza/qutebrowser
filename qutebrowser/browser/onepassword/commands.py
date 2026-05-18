@@ -65,12 +65,33 @@ def onepassword_pick(tab: apitypes.Tab, item_id: str) -> None:
 def onepassword_fill(tab: apitypes.Tab, otp: bool = False) -> None:
     """Fill the current page's login form from 1Password.
 
+    When exactly one vault item matches the page URL, fills directly.
+    When multiple items match (e.g. credentials in different vaults),
+    opens the :onepassword-pick completion so the user can choose
+    explicitly — no silent guessing.
+
     Args:
         otp: Also copy the TOTP code to the clipboard.
     """
     if not _check_enabled():
         return
-    _bridge().fill(tab, tab.url().toString(), otp=otp)
+    url = tab.url().toString()
+
+    def _on_matches(matches, err):
+        if err:
+            message.error(f"1Password: {err}")
+            return
+        if not matches:
+            message.info(f"1Password: no items found for {url}")
+            return
+        if len(matches) == 1:
+            _bridge().fill_by_id(tab, matches[0]["id"], otp=otp)
+            return
+        message.info(f"1Password: {len(matches)} items match — opening picker")
+        cmd = objreg.get("status-command", scope="window", window=tab.win_id)
+        cmd.cmd_set_text(":onepassword-pick ")
+
+    _bridge().find_matches(url, _on_matches)
 
 
 @cmdutils.register()

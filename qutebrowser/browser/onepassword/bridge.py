@@ -104,7 +104,28 @@ class OnePasswordBridge(QObject):
 
         self._client.call("find_items", {"url": url}, _on_find)
 
-    def fill_by_id(self, tab: Any, item_id: str) -> None:
+    def find_matches(
+        self,
+        url: str,
+        callback: Callable[[list[dict[str, Any]] | None, str | None], None],
+    ) -> None:
+        """Return the raw find_items list without auto-fetching items[0].
+
+        Useful for commands that need to branch on the number of matches
+        (e.g. open a picker when N>1) instead of silently picking one.
+        callback(matches, error_msg): matches is None on error.
+        """
+        self.ensure_connected()
+
+        def _on_find(resp: dict[str, Any]) -> None:
+            if "error" in resp:
+                callback(None, resp["error"]["message"])
+                return
+            callback(resp.get("result", []), None)
+
+        self._client.call("find_items", {"url": url}, _on_find)
+
+    def fill_by_id(self, tab: Any, item_id: str, otp: bool = False) -> None:
         """Fetch a specific vault item by ID and fill the current page's form."""
         self.ensure_connected()
 
@@ -112,7 +133,7 @@ class OnePasswordBridge(QObject):
             if "error" in resp:
                 message.error(f"1Password: {resp['error']['message']}")
                 return
-            self._on_credentials_for_fill(resp.get("result", {}), None, tab, False)
+            self._on_credentials_for_fill(resp.get("result", {}), None, tab, otp)
 
         self._client.call("get_item", {"id": item_id}, _on_get)
 

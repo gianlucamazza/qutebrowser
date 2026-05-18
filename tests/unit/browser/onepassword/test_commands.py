@@ -270,3 +270,90 @@ def test_copy_totp_missing_field_shows_error(qapp, config_stub, monkeypatch):
     )()
     onepassword_copy_totp(tab)
     assert any("no TOTP" in e for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# onepassword_fill — new multi-match / picker behaviour
+# ---------------------------------------------------------------------------
+
+
+def _fake_tab(url="https://x.com", win_id=1):
+    return type(
+        "FakeTab",
+        (),
+        {
+            "url": lambda self: type("U", (), {"toString": lambda self: url})(),
+            "win_id": win_id,
+        },
+    )()
+
+
+def _make_fill_bridge(monkeypatch, matches, err=None):
+    """Patch objreg.get to return a bridge whose find_matches yields *matches*."""
+    from qutebrowser.utils import objreg
+
+    fill_by_id_calls = []
+    fake_bridge = type(
+        "FakeBridge",
+        (),
+        {
+            "find_matches": lambda self, url, cb: cb(matches, err),
+            "fill_by_id": lambda self, tab, item_id, otp=False: fill_by_id_calls.append(
+                (item_id, otp)
+            ),
+        },
+    )()
+    monkeypatch.setattr(objreg, "get", lambda key, **kw: fake_bridge)
+    return fake_bridge, fill_by_id_calls
+
+
+def test_fill_zero_matches_shows_message(qapp, config_stub, monkeypatch):
+    config_stub.set_obj("onepassword.enabled", True)
+    infos = []
+    monkeypatch.setattr("qutebrowser.utils.message.info", lambda s: infos.append(s))
+    _make_fill_bridge(monkeypatch, [])
+
+    from qutebrowser.browser.onepassword.commands import onepassword_fill
+
+    onepassword_fill(_fake_tab())
+    assert any("no items found" in s for s in infos)
+
+
+def test_fill_single_match_calls_fill_by_id(qapp, config_stub, monkeypatch):
+    config_stub.set_obj("onepassword.enabled", True)
+    _, fill_calls = _make_fill_bridge(monkeypatch, [{"id": "abc"}])
+
+    from qutebrowser.browser.onepassword.commands import onepassword_fill
+
+    onepassword_fill(_fake_tab())
+    assert fill_calls == [("abc", False)]
+
+
+def test_fill_multiple_matches_opens_picker(qapp, config_stub, monkeypatch):
+    config_stub.set_obj("onepassword.enabled", True)
+    infos = []
+    monkeypatch.setattr("qutebrowser.utils.message.info", lambda s: infos.append(s))
+
+    set_text_calls = []
+    fake_cmd = type(
+        "FakeCmd",
+        (),
+        {"cmd_set_text": lambda self, t: set_text_calls.append(t)},
+    )()
+
+    from qutebrowser.utils import objreg
+
+    fake_bridge, _ = _make_fill_bridge(monkeypatch, [{"id": "a"}, {"id": "b"}])
+
+    def _get(key, **kw):
+        if key == "status-command":
+            return fake_cmd
+        return fake_bridge
+
+    monkeypatch.setattr(objreg, "get", _get)
+
+    from qutebrowser.browser.onepassword.commands import onepassword_fill
+
+    onepassword_fill(_fake_tab())
+    assert any("opening picker" in s for s in infos)
+    assert set_text_calls == [":onepassword-pick "]

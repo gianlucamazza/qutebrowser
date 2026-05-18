@@ -88,6 +88,7 @@ class OpCliBackend(OnePasswordBackend):
                     "id": item["id"],
                     "title": item.get("title", ""),
                     "username": item.get("additional_information", ""),
+                    "vault": item.get("vault", {}).get("name", ""),
                     "url_match_score": 1,
                 }
             )
