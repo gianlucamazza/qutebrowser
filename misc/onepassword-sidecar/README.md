@@ -16,7 +16,7 @@ repository and is kept in sync; either is installable via pip/pipx.
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11+
 - [1Password CLI v2](https://developer.1password.com/docs/cli/) (`op`)
   installed and signed in with biometric unlock enabled
 - Linux (macOS support untested; Windows not supported)
