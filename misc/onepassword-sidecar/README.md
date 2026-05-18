@@ -6,8 +6,13 @@ pluggable backend — either the official `op` CLI (default, ToS-clean) or
 an experimental native-protocol backend that speaks the 1Password desktop
 app IPC directly.
 
-See [`doc/onepassword.asciidoc`](../../doc/onepassword.asciidoc) in the
-qutebrowser repository for the browser-side setup and command reference.
+Companion browser-side code lives in the `validate-8642-webauthn` branch of
+[gianlucamazza/qutebrowser](https://github.com/gianlucamazza/qutebrowser/tree/validate-8642-webauthn).
+See [`doc/onepassword.asciidoc`](https://github.com/gianlucamazza/qutebrowser/blob/validate-8642-webauthn/doc/onepassword.asciidoc)
+for the browser-side setup and command reference.
+
+The copy in `misc/onepassword-sidecar/` of that branch mirrors this
+repository and is kept in sync; either is installable via pip/pipx.
 
 ## Requirements
 
