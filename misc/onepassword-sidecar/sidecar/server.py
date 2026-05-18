@@ -191,8 +191,6 @@ def main() -> None:
     if args.backend == "native":
         try:
             from sidecar.backends.native_protocol import (
-                BackendUnavailable,
-                BrowserVerificationFailed,
                 NativeProtocolBackend,
             )
 

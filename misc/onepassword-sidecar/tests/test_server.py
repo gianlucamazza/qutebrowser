@@ -4,13 +4,10 @@
 """Tests for SidecarServer: dispatch error handling + socket permissions."""
 
 import json
-import os
 import pathlib
-import socket
 import sys
 import threading
 
-import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 

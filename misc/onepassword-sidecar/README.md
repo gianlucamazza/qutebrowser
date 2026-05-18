@@ -24,11 +24,11 @@ repository and is kept in sync; either is installable via pip/pipx.
 ## Install
 
 ```bash
-# From source (recommended for development)
-pip install -e .
+# From PyPI (recommended)
+pipx install qute-1pass-sidecar
 
-# Or with pipx for an isolated environment
-pipx install .
+# From source (for development)
+pip install -e .
 ```
 
 This installs the `qute-1pass-sidecar` executable.

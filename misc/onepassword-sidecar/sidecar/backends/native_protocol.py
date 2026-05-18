@@ -55,7 +55,7 @@ import time
 from typing import Any
 
 from sidecar.backends.base import OnePasswordBackend
-from sidecar.backends.op_cli import OpCliBackend, OpCliError
+from sidecar.backends.op_cli import OpCliBackend
 
 log = logging.getLogger("qute-1pass")
 
