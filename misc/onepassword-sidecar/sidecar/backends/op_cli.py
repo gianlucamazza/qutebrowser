@@ -8,7 +8,11 @@ import subprocess
 import urllib.parse
 from typing import Any
 
+from publicsuffixlist import PublicSuffixList
+
 from sidecar.backends.base import OnePasswordBackend
+
+_PSL = PublicSuffixList()
 
 
 class OpCliError(Exception):
@@ -16,17 +20,31 @@ class OpCliError(Exception):
 
 
 def _hosts_match(host: str, item_host: str) -> bool:
-    """Strict subdomain-aware host match.
+    """Subdomain-aware host match using the Mozilla Public Suffix List.
 
-    Matches when hosts are identical or one is a proper subdomain of the
-    other (separated by a dot). Avoids false-positives like
-    'evilgithub.com' matching 'github.com'.
+    Matches when both hosts are equal or share the same registrable domain
+    (eTLD+1) as computed via the Public Suffix List. This correctly handles:
+    - locale subdomains: 'it-it.facebook.com' and 'www.facebook.com' both
+      reduce to 'facebook.com' → match
+    - genuine subdomains: 'api.github.com' and 'github.com' → match
+    - lookalikes: 'evilgithub.com' vs 'github.com' → no match
+    - ccTLDs: 'app.bar.co.uk' vs 'app.baz.co.uk' → no match ('co.uk' is a
+      public suffix; their eTLD+1 are 'bar.co.uk' and 'baz.co.uk')
+    - shared PaaS hosts: 'app1.herokuapp.com' vs 'app2.herokuapp.com' →
+      no match ('herokuapp.com' is a public suffix)
+
+    Hosts without a PSL suffix (localhost, raw IPs) fall back to strict
+    equality via the first check.
     """
     if not host or not item_host:
         return False
     if host == item_host:
         return True
-    return host.endswith("." + item_host) or item_host.endswith("." + host)
+    h_etld1 = _PSL.privatesuffix(host)
+    i_etld1 = _PSL.privatesuffix(item_host)
+    if not h_etld1 or not i_etld1:
+        return False
+    return h_etld1 == i_etld1
 
 
 class OpCliBackend(OnePasswordBackend):

@@ -3,7 +3,7 @@ name = "qute-1pass-sidecar"
 version = "0.1.0"
 description = "1Password sidecar daemon for qutebrowser"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["publicsuffixlist>=0.10.0"]
 
 [project.scripts]
 qute-1pass-sidecar = "sidecar.server:main"

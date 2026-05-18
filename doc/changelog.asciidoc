@@ -51,6 +51,13 @@ Fixed
   explicit disambiguation.
 - `:onepassword-fill` URL matching now uses strict subdomain rules:
   `evilgithub.com` no longer matches a `github.com` vault item.
+- URL matching in the 1Password integration now uses the Mozilla Public
+  Suffix List (via `publicsuffixlist`) to compute the registrable domain.
+  The previous "last two dot-separated parts" heuristic produced false
+  matches on multi-level ccTLDs (`bar.co.uk` ↔ `baz.co.uk`) and on shared
+  public hosts (`*.herokuapp.com`, `*.github.io`, `*.appspot.com`) — a
+  credential-theft vector when an attacker controls a sibling subdomain on
+  the same public host.
 
 [[v3.7.0]]
 v3.7.0 (2026-04-03)

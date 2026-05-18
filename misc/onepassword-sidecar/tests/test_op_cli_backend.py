@@ -134,7 +134,117 @@ def test_save_login_returns_id(fake_op):
     assert result["id"] == "newid"
 
 
+def test_find_items_matches_locale_subdomain(fake_op):
+    # Item saved with locale-specific URL, page visited on main subdomain.
+    # 'it-it.facebook.com' and 'www.facebook.com' share registrable domain
+    # 'facebook.com' -> should match.
+    items = [
+        {
+            "id": "fb",
+            "title": "Facebook",
+            "urls": [{"href": "https://it-it.facebook.com/"}],
+            "additional_information": "user",
+        }
+    ]
+    backend = fake_op(items)
+    results = backend.find_items("https://www.facebook.com/login")
+    assert len(results) == 1
+    assert results[0]["id"] == "fb"
+
+
+def test_find_items_still_rejects_lookalike_with_registrable_domain(fake_op):
+    # 'evilgithub.com' registrable domain != 'github.com' -> no match.
+    items = [
+        {
+            "id": "real-github",
+            "title": "GitHub",
+            "urls": [{"href": "https://github.com"}],
+            "additional_information": "user",
+        }
+    ]
+    backend = fake_op(items)
+    results = backend.find_items("https://evilgithub.com/login")
+    assert results == []
+
+
 def test_op_error_raises(fake_op):
     backend = fake_op({"error": "Unauthorized"}, returncode=1)
     with pytest.raises(OpCliError):
         backend.find_items("https://example.com")
+
+
+def test_find_items_rejects_cctld_collision(fake_op):
+    # 'co.uk' is a public suffix: 'bar.co.uk' and 'baz.co.uk' are
+    # distinct registrable domains. The old naive last-2-parts heuristic
+    # would have falsely unified them on 'co.uk'.
+    items = [
+        {
+            "id": "uk-bar",
+            "title": "Bar UK",
+            "urls": [{"href": "https://app.bar.co.uk"}],
+            "additional_information": "user",
+        }
+    ]
+    backend = fake_op(items)
+    results = backend.find_items("https://app.baz.co.uk/login")
+    assert results == []
+
+
+def test_find_items_rejects_public_paas_collision(fake_op):
+    # 'herokuapp.com' is a public suffix in the PSL: two apps on the same
+    # PaaS have DISTINCT registrable domains. This prevents credential
+    # theft via a sibling subdomain on a shared public host.
+    items = [
+        {
+            "id": "heroku-app1",
+            "title": "My Heroku App",
+            "urls": [{"href": "https://myapp.herokuapp.com"}],
+            "additional_information": "user",
+        }
+    ]
+    backend = fake_op(items)
+    results = backend.find_items("https://attacker.herokuapp.com/login")
+    assert results == []
+
+
+def test_find_items_rejects_github_pages_collision(fake_op):
+    # 'github.io' is a public suffix: each GitHub Pages user has a distinct
+    # eTLD+1 (alice.github.io vs bob.github.io).
+    items = [
+        {
+            "id": "ghpages-alice",
+            "title": "Alice site",
+            "urls": [{"href": "https://alice.github.io"}],
+            "additional_information": "user",
+        }
+    ]
+    backend = fake_op(items)
+    results = backend.find_items("https://bob.github.io/login")
+    assert results == []
+
+
+def test_find_items_localhost_matches_exactly(fake_op):
+    items = [
+        {
+            "id": "local",
+            "title": "Local dev",
+            "urls": [{"href": "http://localhost:3000"}],
+            "additional_information": "user",
+        }
+    ]
+    backend = fake_op(items)
+    assert len(backend.find_items("http://localhost:3000/login")) == 1
+
+
+def test_find_items_ip_matches_exactly(fake_op):
+    items = [
+        {
+            "id": "ip-item",
+            "title": "Direct IP",
+            "urls": [{"href": "http://192.168.1.10"}],
+            "additional_information": "user",
+        }
+    ]
+    backend = fake_op(items)
+    assert len(backend.find_items("http://192.168.1.10/login")) == 1
+    assert backend.find_items("http://192.168.1.11/login") == []
