@@ -58,13 +58,56 @@ def test_find_items_returns_matching(fake_op):
     assert results[0]["url_match_score"] == 1
 
 
-def test_find_items_no_match_returns_zero_score(fake_op):
+def test_find_items_no_match_returns_empty(fake_op):
     items = [
         {"id": "abc", "title": "Example", "urls": [], "additional_information": ""}
     ]
     backend = fake_op(items)
     results = backend.find_items("https://example.com/login")
-    assert results[0]["url_match_score"] == 0
+    assert results == []
+
+
+def test_find_items_rejects_substring_lookalike(fake_op):
+    items = [
+        {
+            "id": "real-github",
+            "title": "GitHub",
+            "urls": [{"href": "https://github.com"}],
+            "additional_information": "user",
+        }
+    ]
+    backend = fake_op(items)
+    results = backend.find_items("https://evilgithub.com/login")
+    assert results == []
+
+
+def test_find_items_matches_subdomain(fake_op):
+    items = [
+        {
+            "id": "github-main",
+            "title": "GitHub",
+            "urls": [{"href": "https://github.com"}],
+            "additional_information": "user",
+        }
+    ]
+    backend = fake_op(items)
+    results = backend.find_items("https://api.github.com/login")
+    assert len(results) == 1
+    assert results[0]["id"] == "github-main"
+
+
+def test_find_items_matches_parent_when_item_is_subdomain(fake_op):
+    items = [
+        {
+            "id": "login-google",
+            "title": "Google",
+            "urls": [{"href": "https://accounts.google.com"}],
+            "additional_information": "user",
+        }
+    ]
+    backend = fake_op(items)
+    results = backend.find_items("https://google.com/")
+    assert len(results) == 1
 
 
 def test_get_item_extracts_credentials(fake_op):

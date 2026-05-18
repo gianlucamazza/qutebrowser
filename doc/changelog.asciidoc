@@ -41,6 +41,12 @@ Added
   Terms of Service.
 - FIDO2 User Verification support for WebAuthn dialogs (#8533).
 
+Fixed
+~~~~~
+
+- `:onepassword-fill` URL matching now uses strict subdomain rules:
+  `evilgithub.com` no longer matches a `github.com` vault item.
+
 [[v3.7.0]]
 v3.7.0 (2026-04-03)
 -------------------

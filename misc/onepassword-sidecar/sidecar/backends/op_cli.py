@@ -15,6 +15,20 @@ class OpCliError(Exception):
     pass
 
 
+def _hosts_match(host: str, item_host: str) -> bool:
+    """Strict subdomain-aware host match.
+
+    Matches when hosts are identical or one is a proper subdomain of the
+    other (separated by a dot). Avoids false-positives like
+    'evilgithub.com' matching 'github.com'.
+    """
+    if not host or not item_host:
+        return False
+    if host == item_host:
+        return True
+    return host.endswith("." + item_host) or item_host.endswith("." + host)
+
+
 class OpCliBackend(OnePasswordBackend):
     """Backend using the official `op` CLI v2 (biometric unlock supported)."""
 
@@ -60,22 +74,23 @@ class OpCliBackend(OnePasswordBackend):
         results = []
         for item in items:
             urls = item.get("urls") or []
-            score = 0
+            matched = False
             for u in urls:
                 href = u.get("href", "")
                 item_host = urllib.parse.urlparse(href).hostname or ""
-                if item_host and (host.endswith(item_host) or item_host.endswith(host)):
-                    score = 1
+                if _hosts_match(host, item_host):
+                    matched = True
                     break
+            if not matched:
+                continue
             results.append(
                 {
                     "id": item["id"],
                     "title": item.get("title", ""),
                     "username": item.get("additional_information", ""),
-                    "url_match_score": score,
+                    "url_match_score": 1,
                 }
             )
-        results.sort(key=lambda x: -x["url_match_score"])
         return results
 
     def get_item(self, item_id: str, reveal: bool = True) -> dict[str, Any]:
